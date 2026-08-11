@@ -5,7 +5,16 @@ const LOCAL_STORAGE_TOKEN = 'beka_token_admin';
 const LOCAL_STORAGE_SERVER = 'beka_api_url';
 
 export function obtenerBaseUrl(): string {
-  return localStorage.getItem(LOCAL_STORAGE_SERVER) || BASE;
+  const guardada = localStorage.getItem(LOCAL_STORAGE_SERVER);
+  if (guardada) return guardada;
+  if (
+    typeof window !== 'undefined' &&
+    window.location?.origin &&
+    window.location.origin !== 'http://localhost'
+  ) {
+    return window.location.origin;
+  }
+  return BASE;
 }
 
 export function guardarUrlServidor(url: string): void {

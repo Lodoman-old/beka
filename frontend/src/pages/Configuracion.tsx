@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import {
   Percent,
   MessageCircle,
@@ -12,8 +13,9 @@ import {
   Trash2,
   KeyRound,
   Link2,
+  Server,
 } from 'lucide-react';
-import { api, BASE } from '../api/client';
+import { api, BASE, guardarUrlServidor, obtenerBaseUrl } from '../api/client';
 import { ValorConfig, EstadoWhatsApp } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
 import {
@@ -46,6 +48,9 @@ export default function Configuracion() {
   const [logoVersion, setLogoVersion] = useState(0);
   const [logoExiste, setLogoExiste] = useState<boolean | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
+  const [urlServidor, setUrlServidor] = useState('');
+
+  const esMovil = Capacitor.isNativePlatform();
 
   const valorDe = (clave: string): string =>
     config.datos?.find((c) => c.clave === clave)?.valor ?? '';
@@ -192,6 +197,13 @@ export default function Configuracion() {
     });
   };
 
+  const cambiarServidor = (e: FormEvent) => {
+    e.preventDefault();
+    if (!urlServidor.trim()) return;
+    guardarUrlServidor(urlServidor);
+    window.location.href = `${urlServidor.trim().replace(/\/+$/, '')}/login`;
+  };
+
   if (config.cargando) return <Cargando />;
 
   if (logoExiste === null) comprobarLogo();
@@ -208,6 +220,30 @@ export default function Configuracion() {
         <div className="mb-4">
           <Alerta tipo="exito" mensaje="Precios del catálogo recalculados con el margen nuevo" />
         </div>
+      )}
+
+      {esMovil && (
+        <Card className="p-5 mb-4">
+          <h2 className="font-semibold text-slate-800 mb-1 flex items-center gap-2">
+            <Server size={18} className="text-marca-600" /> Dirección del servidor
+          </h2>
+          <p className="text-sm text-slate-500 mb-3">
+            Actual: <span className="font-mono font-bold text-slate-700">{obtenerBaseUrl()}</span>.
+            Si cambias de servidor, vuelve a iniciar sesión.
+          </p>
+          <form onSubmit={cambiarServidor} className="flex gap-2">
+            <input
+              className={inputClase}
+              inputMode="url"
+              placeholder="https://tudominio.com"
+              value={urlServidor}
+              onChange={(e) => setUrlServidor(e.target.value)}
+            />
+            <button type="submit" className={botonPrimario}>
+              Guardar
+            </button>
+          </form>
+        </Card>
       )}
 
       <Card className="p-5 mb-4">
