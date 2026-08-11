@@ -23,20 +23,22 @@ export async function manejarQrWhatsApp(_req: Request, res: Response): Promise<v
 
 router.get('/whatsapp-qr', envolver(manejarQrWhatsApp));
 
-router.get(
-  '/logo',
-  envolver(async (_req, res) => {
-    if (!sistema.existeLogo()) {
-      res.status(404).json({ error: 'LOGO_NO_EXISTE' });
-      return;
-    }
-    const ruta = sistema.RUTA_LOGO;
-    const tipo = ruta.endsWith('.png') ? 'image/png' : 'image/jpeg';
-    res.setHeader('Content-Type', tipo);
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.sendFile(ruta);
-  })
-);
+export async function manejarLogoGet(_req: Request, res: Response): Promise<void> {
+  if (!sistema.existeLogo()) {
+    res.status(404).json({ error: 'LOGO_NO_EXISTE' });
+    return;
+  }
+  const ruta = sistema.RUTA_LOGO;
+  const tipo = ruta.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  res.setHeader('Content-Type', tipo);
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.sendFile(ruta);
+}
+
+export async function manejarLogoUrl(_req: Request, res: Response): Promise<void> {
+  const url = await sistema.obtenerValor('LOGO_URL');
+  res.json({ url: url || null });
+}
 
 router.put(
   '/logo',
@@ -64,10 +66,7 @@ router.delete(
 
 router.get(
   '/logo-url',
-  envolver(async (_req, res) => {
-    const url = await sistema.obtenerValor('LOGO_URL');
-    res.json({ url: url || null });
-  })
+  envolver(manejarLogoUrl)
 );
 
 router.get(

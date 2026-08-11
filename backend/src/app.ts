@@ -14,7 +14,7 @@ import viajesRouter from './routes/viajes.routes';
 import abonosRouter from './routes/abonos.routes';
 import catalogoRouter from './routes/catalogo.routes';
 import reportesRouter from './routes/reportes.routes';
-import configRouter, { manejarQrWhatsApp } from './routes/config.routes';
+import configRouter, { manejarQrWhatsApp, manejarLogoGet, manejarLogoUrl } from './routes/config.routes';
 import comprobantesRouter from './routes/comprobantes.routes';
 import authRouter from './routes/auth.routes';
 import portalRouter from './routes/portal.routes';
@@ -32,6 +32,7 @@ export function crearApp(): Application {
         directives: {
           ...helmet.contentSecurityPolicy.getDefaultDirectives(),
           'upgrade-insecure-requests': null,
+          'img-src': ["'self'", 'data:', 'https:'],
         },
       },
     })
@@ -48,6 +49,8 @@ export function crearApp(): Application {
   api.use('/auth', authRouter);
   api.use('/portal', portalRouter);
   api.get('/config/whatsapp-qr', envolver(manejarQrWhatsApp));
+  api.get('/config/logo', envolver(manejarLogoGet));
+  api.get('/config/logo-url', envolver(manejarLogoUrl));
   api.get(
     '/img/:nombre',
     envolver(async (req: Request, res: Response) => {
