@@ -19,60 +19,74 @@ function limpiarPrecio(texto: string): number {
   return Number.isFinite(numero) ? numero : 0;
 }
 
-async function extraerFilas(page: Page): Promise<ProductoNice[]> {
-  const filas = await page.$$(env.NICE_SEL_FILA);
-  const productos: ProductoNice[] = [];
-
-  for (const fila of filas) {
-    try {
-      const sku = await fila.$eval(env.NICE_SEL_SKU, (el) => el.textContent?.trim() || '');
-      const nombre = await fila.$eval(env.NICE_SEL_NOMBRE, (el) => el.textContent?.trim() || '');
-      const precio = await fila.$eval(env.NICE_SEL_PRECIO, (el) => el.textContent?.trim() || '');
-      const imagen = await fila
-        .$eval(env.NICE_SEL_IMAGEN, (el) => {
-          const img = el as HTMLImageElement;
-          return img.currentSrc || img.src || '';
-        })
-        .catch(() => '');
-
-      const precioCosto = limpiarPrecio(precio);
-      if (!sku || !nombre || precioCosto <= 0) continue;
-
-      productos.push({ sku, nombre, precio_costo: precioCosto, imagen });
-    } catch {
-      continue;
+async function cerrarBanners(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const id of ['bannerCookiesFade', 'bannerCookies', 'bannerCookiesFadeModal']) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
     }
-  }
-  return productos;
+  });
 }
 
-async function irPaginaSiguiente(page: Page): Promise<boolean> {
-  const posibles = [
-    'a[rel=next]',
-    'a.next',
-    'li.next a',
-    'a[aria-label="Siguiente"]',
-    'button[aria-label="Siguiente"]',
-  ];
-  try {
-    const encontrado = await page.evaluate((selector) => {
-      const el = document.querySelectorAll<HTMLElement>(selector)[0];
-      if (!el) return null;
-      if (el.tagName === 'A') {
-        const href = (el as HTMLAnchorElement).getAttribute('href');
-        const disabled = el.getAttribute('aria-disabled');
-        if (href && disabled !== 'true') return href;
+async function extraerTarjetas(page: Page): Promise<ProductoNice[]> {
+  const resultado = await page.evaluate(
+    (selFila, selSku, selNombre, selPrecio, selImagen) => {
+      const limpiar = (texto: string): number => {
+        const limpio = texto.replace(/[^0-9.,]/g, '').replace(/,/g, '');
+        const numero = parseFloat(limpio);
+        return Number.isFinite(numero) ? numero : 0;
+      };
+      const productos: {
+        sku: string;
+        nombre: string;
+        precio_costo: number;
+        imagen: string;
+      }[] = [];
+      for (const tarjeta of Array.from(document.querySelectorAll(selFila))) {
+        try {
+          const enlace = tarjeta.querySelector(selSku) as HTMLAnchorElement | null;
+          const href = enlace?.getAttribute('href') || '';
+          const sku = decodeURIComponent(
+            (href.split('sItemSecondCode=')[1] ?? '').split('&')[0]
+          ).trim();
+          if (!sku) continue;
+          const bloque = tarjeta.querySelector(selNombre);
+          const lineas = (bloque?.textContent || '')
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const nombre = lineas[1] ?? lineas[0] ?? '';
+          const precioEl = tarjeta.querySelector(selPrecio);
+          const precioCosto = limpiar((precioEl?.textContent || '').trim());
+          if (!nombre || precioCosto <= 0) continue;
+          const img = tarjeta.querySelector(selImagen) as HTMLImageElement | null;
+          const imagen = img ? img.currentSrc || img.src || '' : '';
+          productos.push({ sku, nombre, precio_costo: precioCosto, imagen });
+        } catch {
+          continue;
+        }
       }
-      return null;
-    }, posibles.join(','));
-    if (!encontrado) return false;
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: env.NICE_TIMEOUT_MS }).catch(() => undefined),
-      page.evaluate((href) => {
-        window.location.href = href;
-      }, encontrado),
-    ]);
-    return true;
+      return productos;
+    },
+    env.NICE_SEL_FILA,
+    env.NICE_SEL_SKU,
+    env.NICE_SEL_NOMBRE,
+    env.NICE_SEL_PRECIO,
+    env.NICE_SEL_IMAGEN
+  );
+  return resultado;
+}
+
+async function cargarMasSiExiste(page: Page): Promise<boolean> {
+  try {
+    const tieneBoton = await page.evaluate(() => {
+      const botones = Array.from(document.querySelectorAll('button'));
+      const b = botones.find((x) => /cargar\s*más/i.test(x.textContent || ''));
+      if (!b) return false;
+      b.click();
+      return true;
+    });
+    return tieneBoton;
   } catch {
     return false;
   }
@@ -94,7 +108,7 @@ export async function extraerCatalogoNice(): Promise<ResultadoScrape> {
 
   const margen = await margenActual();
   const productos: ProductoNice[] = [];
-  let paginas = 1;
+  let rondas = 0;
 
   const browser: Browser = await puppeteerExtra.launch({
     headless: env.NICE_HEADLESS,
@@ -114,6 +128,7 @@ export async function extraerCatalogoNice(): Promise<ResultadoScrape> {
       waitUntil: 'networkidle2',
       timeout: env.NICE_TIMEOUT_MS,
     });
+    await cerrarBanners(page);
 
     await page.waitForSelector(env.NICE_SEL_USUARIO, { timeout: env.NICE_TIMEOUT_MS });
     await page.type(env.NICE_SEL_USUARIO, usuario, { delay: 40 });
@@ -122,34 +137,58 @@ export async function extraerCatalogoNice(): Promise<ResultadoScrape> {
 
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'networkidle2', timeout: env.NICE_TIMEOUT_MS }).catch(() => undefined),
-      page.click(env.NICE_SEL_BTN_LOGIN),
+      page.evaluate(() => {
+        const b = document.querySelector('#loginButton');
+        if (b) (b as HTMLButtonElement).click();
+      }),
     ]);
+    await page
+      .waitForFunction(() => !location.href.includes('/Account/Login'), {
+        timeout: env.NICE_TIMEOUT_MS,
+      })
+      .catch(() => undefined);
+    console.log('[nice] sesion iniciada:', page.url());
 
-    await page.waitForSelector(env.NICE_SEL_ENLACE_CATALOGO, { timeout: env.NICE_TIMEOUT_MS });
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: env.NICE_TIMEOUT_MS }).catch(() => undefined),
-      page.click(env.NICE_SEL_ENLACE_CATALOGO),
-    ]);
+    const urlTienda = `https://backoffice.niceonline.com/${usuario}nb/Products?nPage=1`;
+    console.log('[nice] abriendo la tienda:', urlTienda);
+    await page.goto(urlTienda, { waitUntil: 'networkidle2', timeout: env.NICE_TIMEOUT_MS });
+    await new Promise((r) => setTimeout(r, 3000));
+    await cerrarBanners(page);
 
-    console.log('[nice] sesion iniciada, extrayendo catalogo...');
-
+    console.log('[nice] extrayendo catalogo...');
     for (let i = 0; i < Math.min(env.NICE_PAGINAS_MAX, 500); i++) {
-      const filasPagina = await extraerFilas(page);
+      const antes = (await page.$$(env.NICE_SEL_FILA)).length;
+      const filasPagina = await extraerTarjetas(page);
       productos.push(...filasPagina);
-      console.log(`[nice] pagina ${paginas}: ${filasPagina.length} productos`);
-
-      const haySiguiente = await irPaginaSiguiente(page);
-      if (!haySiguiente) break;
-      paginas += 1;
+      const hayMas = await cargarMasSiExiste(page);
+      if (!hayMas) {
+        rondas += 1;
+        console.log(`[nice] ronda ${rondas}: ${filasPagina.length} productos (sin mas paginas)`);
+        break;
+      }
+      rondas += 1;
+      console.log(`[nice] ronda ${rondas}: ${filasPagina.length} productos (cargando mas...)`);
+      try {
+        await page.waitForFunction(
+          (n) => document.querySelectorAll(env.NICE_SEL_FILA).length > n,
+          { timeout: 60000 },
+          antes
+        );
+      } catch {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 1200));
     }
 
-    console.log(`[nice] ${productos.length} productos extraidos de ${paginas} paginas, guardando...`);
+    console.log(
+      `[nice] ${productos.length} productos extraidos en ${rondas} rondas, guardando...`
+    );
     const resumen = await upsertMasivo(productos, margen);
     console.log(
       `[nice] sincronizacion completada: ${resumen.insertados} insertados, ${resumen.actualizados} actualizados, ${resumen.con_error} con error`
     );
 
-    return { paginas_procesadas: paginas, productos_extraidos: productos.length, resumen };
+    return { paginas_procesadas: rondas, productos_extraidos: productos.length, resumen };
   } finally {
     await browser.close();
   }
