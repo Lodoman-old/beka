@@ -24,12 +24,34 @@ function limpiarCandadoPerfil(): void {
   try {
     const dir = env.WHATSAPP_SESION_DIR;
     if (!fs.existsSync(dir)) return;
-    for (const archivo of fs.readdirSync(dir)) {
-      if (archivo.startsWith('Singleton')) {
-        fs.rmSync(path.join(dir, archivo), { force: true });
-        console.log('[whatsapp] candado eliminado:', archivo);
+    const pendientes: string[] = [dir];
+    let borrados = 0;
+    while (pendientes.length > 0) {
+      const actual = pendientes.pop() as string;
+      for (const entrada of fs.readdirSync(actual)) {
+        const ruta = path.join(actual, entrada);
+        let esDir = false;
+        try {
+          esDir = fs.statSync(ruta).isDirectory();
+        } catch {
+          continue;
+        }
+        if (esDir) {
+          if (entrada === 'Singleton') {
+            fs.rmSync(ruta, { recursive: true, force: true });
+            borrados += 1;
+            console.log('[whatsapp] candado eliminado:', ruta);
+          } else {
+            pendientes.push(ruta);
+          }
+        } else if (entrada.startsWith('Singleton')) {
+          fs.rmSync(ruta, { force: true });
+          borrados += 1;
+          console.log('[whatsapp] candado eliminado:', ruta);
+        }
       }
     }
+    if (borrados > 0) console.log(`[whatsapp] ${borrados} archivos de candado eliminados`);
   } catch (e) {
     console.error('[whatsapp] no pude limpiar el candado del perfil:', (e as Error).message);
   }
