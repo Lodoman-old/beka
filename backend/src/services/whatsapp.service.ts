@@ -16,14 +16,35 @@ let cliente: Client | null = null;
 let sesionConectada = false;
 let qrPendiente = false;
 let mensajeInicializado = false;
+
+let ultimaLimpieza: {
+  dir: string;
+  borrados: number;
+  sesionExiste: boolean;
+  entradas: string[];
+  error?: string;
+} | null = null;
 let errorInicializacion: string | null = null;
 let reintentos: ReturnType<typeof setInterval> | null = null;
 let reintentoTimer: ReturnType<typeof setTimeout> | null = null;
 
 function limpiarCandadoPerfil(): void {
+  const dir = env.WHATSAPP_SESION_DIR;
+  const reporte: { borrados: number; sesionExiste: boolean; entradas: string[]; error?: string } = {
+    borrados: 0,
+    sesionExiste: false,
+    entradas: [],
+  };
   try {
-    const dir = env.WHATSAPP_SESION_DIR;
-    if (!fs.existsSync(dir)) return;
+    if (!fs.existsSync(dir)) {
+      ultimaLimpieza = { dir, ...reporte };
+      return;
+    }
+    reporte.sesionExiste = fs.existsSync(path.join(dir, 'session'));
+    reporte.entradas = fs
+      .readdirSync(dir)
+      .slice(0, 40)
+      .map((e) => e.slice(0, 40));
     const pendientes: string[] = [dir];
     let borrados = 0;
     while (pendientes.length > 0) {
@@ -52,9 +73,12 @@ function limpiarCandadoPerfil(): void {
       }
     }
     if (borrados > 0) console.log(`[whatsapp] ${borrados} archivos de candado eliminados`);
+    reporte.borrados = borrados;
   } catch (e) {
-    console.error('[whatsapp] no pude limpiar el candado del perfil:', (e as Error).message);
+    reporte.error = (e as Error).message;
+    console.error('[whatsapp] no pude limpiar el candado del perfil:', reporte.error);
   }
+  ultimaLimpieza = { dir, ...reporte };
 }
 
 function programarReintento(): void {
@@ -79,6 +103,7 @@ export function estadoWhatsApp(): {
   estado: string;
   qr_pendiente: boolean;
   detalle: string | null;
+  candado?: typeof ultimaLimpieza;
 } {
   return {
     activo: env.WHATSAPP_ENABLED,
@@ -93,6 +118,7 @@ export function estadoWhatsApp(): {
             : 'INICIANDO',
     qr_pendiente: qrPendiente,
     detalle: errorInicializacion,
+    candado: ultimaLimpieza,
   };
 }
 
