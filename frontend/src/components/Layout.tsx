@@ -12,6 +12,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { cerrarSesion } from '../api/client';
+import Logo from './Logo';
 
 const enlaces = [
   { a: '/', etiqueta: 'Inicio', Icono: Home },
@@ -27,10 +28,12 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-slate-100 md:pl-64">
       <aside className="hidden md:flex fixed inset-y-0 left-0 w-64 bg-slate-900 flex-col z-40">
         <div className="px-6 py-6 border-b border-slate-800">
-          <span className="text-2xl font-black text-white tracking-tight">
-            BEKA<span className="text-marca-500">.</span>
-          </span>
-          <p className="text-xs text-slate-400 mt-1">Gestión de negocio</p>
+          <Logo alto="h-12" redondeado="rounded-xl">
+            <span className="text-2xl font-black text-white tracking-tight">
+              BEKA<span className="text-marca-500">.</span>
+            </span>
+          </Logo>
+          <p className="text-xs text-slate-400 mt-2">Gestión de negocio</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {enlaces.map(({ a, etiqueta, Icono }) => (
@@ -89,20 +92,22 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <header className="md:hidden sticky top-0 z-40 bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-        <span className="font-black text-slate-900">
-          BEKA<span className="text-marca-500">.</span>
-        </span>
+      <header className="md:hidden sticky top-0 z-40 bg-gradient-to-r from-sky-600 via-blue-700 to-blue-900 px-4 py-2.5 flex items-center justify-between shadow-lg">
+        <Logo alto="h-10" redondeado="rounded-xl">
+          <span className="font-black text-white">
+            BEKA<span className="text-sky-300">.</span>
+          </span>
+        </Logo>
         <div className="flex items-center gap-1">
-          <Link to="/offline" className="p-2 text-slate-500" title="Modo sin conexión">
+          <Link to="/offline" className="p-2 text-white/80 hover:text-white" title="Modo sin conexión">
             <CloudOff size={20} />
           </Link>
-          <Link to="/configuracion" className="p-2 text-slate-500">
+          <Link to="/configuracion" className="p-2 text-white/80 hover:text-white">
             <Settings size={20} />
           </Link>
           <button
             onClick={cerrarSesion}
-            className="p-2 text-slate-500"
+            className="p-2 text-white/80 hover:text-white"
             title="Salir"
           >
             <LogOut size={20} />

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { Fingerprint, KeyRound, LogIn, Server } from 'lucide-react';
 import PantallaBloqueo from '../components/PantallaBloqueo';
+import Logo from '../components/Logo';
 import {
   api,
   guardarToken,
@@ -115,9 +116,13 @@ export default function Login() {
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <span className="text-4xl font-black text-white tracking-tight">
-            BEKA<span className="text-marca-500">.</span>
-          </span>
+          <div className="flex items-center justify-center">
+            <Logo>
+              <span className="text-4xl font-black text-white tracking-tight">
+                BEKA<span className="text-marca-500">.</span>
+              </span>
+            </Logo>
+          </div>
           <p className="text-slate-400 text-sm mt-1">Inicia sesión como administrador</p>
         </div>
         <form onSubmit={alEnviar} className="bg-white rounded-2xl shadow-2xl p-6 space-y-4">

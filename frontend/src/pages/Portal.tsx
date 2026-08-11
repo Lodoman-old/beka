@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Bus, LogOut, Tag, Wallet, Globe } from 'lucide-react';
+import { Bus, LogOut, Tag, Wallet } from 'lucide-react';
 import { obtenerBaseUrl } from '../api/client';
+import Logo from '../components/Logo';
 
 const TOKEN_CLIENTE = 'beka_token_cliente';
 
@@ -89,19 +90,30 @@ export default function Portal() {
 
   if (sesion && datos) {
     return (
-      <div className="min-h-screen bg-slate-100 px-4 py-8">
-        <div className="max-w-2xl mx-auto">
+      <div className="min-h-screen bg-slate-100 pb-8">
+        <div className="bg-gradient-to-r from-sky-600 via-blue-700 to-blue-900 text-white px-4 py-6">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Logo alto="h-11" redondeado="rounded-xl" />
+              <div>
+                <p className="font-black text-white">Sistema BEKA</p>
+                <p className="text-xs text-sky-200">Portal de clientes</p>
+              </div>
+            </div>
+            <button
+              onClick={salir}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 border border-white/20 text-white px-3 py-2 rounded-xl text-sm font-medium transition"
+            >
+              <LogOut size={16} /> Salir
+            </button>
+          </div>
+        </div>
+        <div className="max-w-2xl mx-auto px-4 pt-6">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-black text-slate-900">¡Hola, {datos.cliente.nombre}!</h1>
               <p className="text-sm text-slate-500">Estas son tus cuentas pendientes</p>
             </div>
-            <button
-              onClick={salir}
-              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 px-3 py-2 rounded-xl text-sm font-medium hover:bg-slate-50"
-            >
-              <LogOut size={16} /> Salir
-            </button>
           </div>
 
           <div className="bg-slate-900 text-white rounded-2xl p-5 mb-6 flex items-center justify-between">
@@ -174,7 +186,9 @@ export default function Portal() {
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
-          <Globe size={40} className="mx-auto text-marca-500 mb-2" />
+          <div className="flex items-center justify-center mb-4">
+            <Logo alto="h-14" redondeado="rounded-2xl" />
+          </div>
           <h1 className="text-2xl font-black text-white">Consulta tus cuentas</h1>
           <p className="text-slate-400 text-sm mt-1">
             Entra con el usuario y contraseña que te enviaron por WhatsApp

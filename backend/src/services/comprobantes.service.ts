@@ -21,18 +21,23 @@ function crearDocumento(titulo: string, negocio: string): PDFDoc {
   doc.info.Title = titulo;
   doc.info.Author = negocio;
 
+  const gradiente = doc.linearGradient(0, 0, doc.page.width, 125);
+  gradiente.stop(0, '#0ea5e9').stop(1, '#1e3a8a');
+  doc.rect(0, 0, doc.page.width, 125).fill(gradiente);
+
   if (existeLogo()) {
     try {
-      doc.image(RUTA_LOGO, 45, 40, { fit: [70, 70] });
+      doc.image(RUTA_LOGO, 45, 28, { fit: [70, 70] });
     } catch {
       void 0;
     }
   }
-  doc.fontSize(16).font('Helvetica-Bold').text(negocio, 130, 48);
-  doc.fontSize(13).fillColor('#334155').text(titulo, 130, 70);
-  doc.fillColor('#94a3b8').fontSize(9).font('Helvetica').text(`Emitido: ${fechaTexto(new Date(), true)}`, 130, 88);
-  doc.moveDown(1.5).fillColor('#000000');
-  doc.font('Helvetica-Bold').fontSize(11).text('_______________________________________________________________________________', 45, 118);
+  doc.fontSize(16).font('Helvetica-Bold').fillColor('#ffffff').text(negocio, 130, 36);
+  doc.fontSize(13).fillColor('#e0f2fe').text(titulo, 130, 58);
+  doc.fillColor('#bae6fd').fontSize(9).font('Helvetica').text(`Emitido: ${fechaTexto(new Date(), true)}`, 130, 76);
+  doc.fillColor('#000000');
+  doc.font('Helvetica-Bold').fontSize(11).text('_______________________________________________________________________________', 45, 138);
+  doc.y = 148;
   return doc;
 }
 
