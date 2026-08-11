@@ -19,6 +19,7 @@ const enlaces = [
   { a: '/ventas', etiqueta: 'Ventas', Icono: Tag },
   { a: '/viajes', etiqueta: 'Viajes', Icono: Bus },
   { a: '/catalogo', etiqueta: 'Catálogo', Icono: Package },
+  { a: '/clientes', etiqueta: 'Clientes', Icono: Users },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -49,19 +50,6 @@ export default function Layout({ children }: { children: ReactNode }) {
               {etiqueta}
             </NavLink>
           ))}
-          <NavLink
-            to="/clientes"
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition ${
-                isActive
-                  ? 'bg-marca-600 text-white'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`
-            }
-          >
-            <Users size={18} />
-            Clientes
-          </NavLink>
           <NavLink
             to="/offline"
             className={({ isActive }) =>
@@ -126,7 +114,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         {children}
       </main>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 grid grid-cols-5 pb-[env(safe-area-inset-bottom)]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 grid grid-cols-6 pb-[env(safe-area-inset-bottom)]">
         {enlaces.map(({ a, etiqueta, Icono }) => (
           <NavLink
             key={a}
