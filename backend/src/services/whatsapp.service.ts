@@ -18,6 +18,24 @@ let qrPendiente = false;
 let mensajeInicializado = false;
 let errorInicializacion: string | null = null;
 let reintentos: ReturnType<typeof setInterval> | null = null;
+let reintentoTimer: ReturnType<typeof setTimeout> | null = null;
+
+function programarReintento(): void {
+  if (reintentoTimer) clearTimeout(reintentoTimer);
+  reintentoTimer = setTimeout(() => {
+    reintentoTimer = null;
+    if (cliente) {
+      void cliente.destroy().catch(() => undefined);
+      cliente = null;
+    }
+    sesionConectada = false;
+    qrPendiente = false;
+    errorInicializacion = null;
+    mensajeInicializado = false;
+    console.log('[whatsapp] reintentando inicializacion en 45s...');
+    inicializarWhatsApp();
+  }, 45_000);
+}
 
 export function estadoWhatsApp(): {
   activo: boolean;
@@ -137,6 +155,10 @@ export function inicializarWhatsApp(): void {
     });
 
     cliente.on('qr', (qr) => {
+      if (reintentoTimer) {
+        clearTimeout(reintentoTimer);
+        reintentoTimer = null;
+      }
       qrPendiente = true;
       errorInicializacion = null;
       console.log('\n[whatsapp] Escanea este codigo QR con tu WhatsApp (solo la primera vez):\n');
@@ -148,6 +170,10 @@ export function inicializarWhatsApp(): void {
     });
 
     cliente.on('ready', () => {
+      if (reintentoTimer) {
+        clearTimeout(reintentoTimer);
+        reintentoTimer = null;
+      }
       sesionConectada = true;
       qrPendiente = false;
       errorInicializacion = null;
@@ -172,6 +198,7 @@ export function inicializarWhatsApp(): void {
     void cliente.initialize().catch((e) => {
       errorInicializacion = 'No se pudo iniciar el navegador de WhatsApp: ' + String(e?.message || e);
       console.error('[whatsapp]', errorInicializacion);
+      programarReintento();
     });
   } catch (e) {
     errorInicializacion = 'Error creando el cliente de WhatsApp: ' + String((e as Error).message);
@@ -391,6 +418,10 @@ async function construirMensajePendiente(abono: FilaAbono): Promise<string> {
 
 export function detenerWhatsApp(): void {
   if (reintentos) clearInterval(reintentos);
+  if (reintentoTimer) {
+    clearTimeout(reintentoTimer);
+    reintentoTimer = null;
+  }
   if (cliente) {
     void cliente.destroy().catch(() => undefined);
     cliente = null;
