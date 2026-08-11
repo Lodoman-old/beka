@@ -28,7 +28,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-slate-100 md:pl-64">
       <aside className="hidden md:flex fixed inset-y-0 left-0 w-64 bg-slate-900 flex-col z-40">
         <div className="px-6 py-6 border-b border-slate-800">
-          <Logo alto="h-12" redondeado="rounded-xl">
+          <Logo alto="h-12">
             <span className="text-2xl font-black text-white tracking-tight">
               BEKA<span className="text-marca-500">.</span>
             </span>
@@ -93,7 +93,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       </aside>
 
       <header className="md:hidden sticky top-0 z-40 bg-gradient-to-r from-sky-600 via-blue-700 to-blue-900 px-4 py-2.5 flex items-center justify-between shadow-lg">
-        <Logo alto="h-10" redondeado="rounded-xl">
+        <Logo alto="h-10">
           <span className="font-black text-white">
             BEKA<span className="text-sky-300">.</span>
           </span>

@@ -27,8 +27,7 @@ function crearDocumento(titulo: string, negocio: string): PDFDoc {
 
   if (existeLogo()) {
     try {
-      doc.roundedRect(38, 26, 84, 84, 14).fill('#ffffff');
-      doc.image(RUTA_LOGO, 45, 39, { fit: [70, 70] });
+      doc.image(RUTA_LOGO, 45, 38, { fit: [75, 75] });
     } catch {
       void 0;
     }

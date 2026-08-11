@@ -94,7 +94,7 @@ export default function Portal() {
         <div className="bg-gradient-to-r from-sky-600 via-blue-700 to-blue-900 text-white px-4 py-6">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Logo alto="h-11" redondeado="rounded-xl" />
+              <Logo alto="h-11" />
               <div>
                 <p className="font-black text-white">Sistema BEKA</p>
                 <p className="text-xs text-sky-200">Portal de clientes</p>
@@ -187,7 +187,7 @@ export default function Portal() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
           <div className="flex items-center justify-center mb-4">
-            <Logo alto="h-14" redondeado="rounded-2xl" />
+            <Logo alto="h-14" />
           </div>
           <h1 className="text-2xl font-black text-white">Consulta tus cuentas</h1>
           <p className="text-slate-400 text-sm mt-1">

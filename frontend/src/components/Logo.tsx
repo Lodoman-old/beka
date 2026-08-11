@@ -14,11 +14,9 @@ export function hayLogo(): Promise<boolean> {
 
 export default function Logo({
   alto = 'h-12',
-  redondeado = 'rounded-2xl',
   children,
 }: {
   alto?: string;
-  redondeado?: string;
   children?: ReactNode;
 }) {
   const [hay, setHay] = useState<boolean | null>(null);
@@ -28,16 +26,12 @@ export default function Logo({
 
   if (hay) {
     return (
-      <div
-        className={`inline-flex items-center justify-center bg-white shadow-lg ${redondeado} px-2 py-1`}
-      >
-        <img
-          src={`${obtenerBaseUrl()}/api/config/logo`}
-          referrerPolicy="no-referrer"
-          alt="Logo del negocio"
-          className={`${alto} w-auto object-contain`}
-        />
-      </div>
+      <img
+        src={`${obtenerBaseUrl()}/api/config/logo`}
+        referrerPolicy="no-referrer"
+        alt="Logo del negocio"
+        className={`${alto} w-auto object-contain`}
+      />
     );
   }
 
