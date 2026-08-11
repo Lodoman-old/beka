@@ -20,6 +20,21 @@ let errorInicializacion: string | null = null;
 let reintentos: ReturnType<typeof setInterval> | null = null;
 let reintentoTimer: ReturnType<typeof setTimeout> | null = null;
 
+function limpiarCandadoPerfil(): void {
+  try {
+    const dir = env.WHATSAPP_SESION_DIR;
+    if (!fs.existsSync(dir)) return;
+    for (const archivo of fs.readdirSync(dir)) {
+      if (archivo.startsWith('Singleton')) {
+        fs.rmSync(path.join(dir, archivo), { force: true });
+        console.log('[whatsapp] candado eliminado:', archivo);
+      }
+    }
+  } catch (e) {
+    console.error('[whatsapp] no pude limpiar el candado del perfil:', (e as Error).message);
+  }
+}
+
 function programarReintento(): void {
   if (reintentoTimer) clearTimeout(reintentoTimer);
   reintentoTimer = setTimeout(() => {
@@ -135,6 +150,8 @@ console.log('[whatsapp] resultado parche LID:', String(resultado));
 export function inicializarWhatsApp(): void {
   if (!env.WHATSAPP_ENABLED || mensajeInicializado) return;
   mensajeInicializado = true;
+
+  limpiarCandadoPerfil();
 
   try {
     cliente = new Client({
