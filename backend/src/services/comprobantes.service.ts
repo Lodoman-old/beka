@@ -21,23 +21,26 @@ function crearDocumento(titulo: string, negocio: string): PDFDoc {
   doc.info.Title = titulo;
   doc.info.Author = negocio;
 
-  const gradiente = doc.linearGradient(0, 0, doc.page.width, 125);
-  gradiente.stop(0, '#0ea5e9').stop(1, '#1e3a8a');
-  doc.rect(0, 0, doc.page.width, 125).fill(gradiente);
+  const gradiente = doc.linearGradient(0, 0, doc.page.width, 135);
+  gradiente.stop(0, '#24336b').stop(1, '#101b42');
+  doc.rect(0, 0, doc.page.width, 135).fill(gradiente);
 
   if (existeLogo()) {
     try {
-      doc.image(RUTA_LOGO, 45, 28, { fit: [70, 70] });
+      doc.roundedRect(38, 26, 84, 84, 14).fill('#ffffff');
+      doc.image(RUTA_LOGO, 45, 39, { fit: [70, 70] });
     } catch {
       void 0;
     }
   }
-  doc.fontSize(16).font('Helvetica-Bold').fillColor('#ffffff').text(negocio, 130, 36);
-  doc.fontSize(13).fillColor('#e0f2fe').text(titulo, 130, 58);
-  doc.fillColor('#bae6fd').fontSize(9).font('Helvetica').text(`Emitido: ${fechaTexto(new Date(), true)}`, 130, 76);
+  doc.fontSize(15).font('Helvetica-Bold').fillColor('#ffffff').text(negocio, 135, 40, { width: 400 });
+  const yTitulo = Math.max(doc.y + 5, 68);
+  doc.fontSize(12).fillColor('#cdd8f0').text(titulo, 135, yTitulo, { width: 400 });
+  const yEmitido = Math.max(doc.y + 3, yTitulo + 17);
+  doc.fillColor('#8fa3d8').fontSize(8.5).font('Helvetica').text(`Emitido: ${fechaTexto(new Date(), true)}`, 135, yEmitido, { width: 400 });
   doc.fillColor('#000000');
-  doc.font('Helvetica-Bold').fontSize(11).text('_______________________________________________________________________________', 45, 138);
-  doc.y = 148;
+  doc.font('Helvetica-Bold').fontSize(11).text('_______________________________________________________________________________', 45, 150);
+  doc.y = 160;
   return doc;
 }
 
@@ -57,12 +60,13 @@ function lineasDocumento(doc: PDFDoc, filas: { izquierda: string; derecha: strin
 
 function encabezadoTabla(doc: PDFDoc, columnas: string[], anchos: number[]): void {
   doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#1e293b');
+  const y = doc.y;
   let x = 45;
   columnas.forEach((columna, i) => {
-    doc.text(columna, x, doc.y, { width: anchos[i] - 10, align: i === columnas.length - 1 ? 'right' : 'left' });
+    doc.text(columna, x, y, { width: anchos[i] - 10, align: i === columnas.length - 1 ? 'right' : 'left', lineBreak: false });
     x += anchos[i];
   });
-  doc.moveDown(0.4);
+  doc.y = y + 13;
   doc.text('______________________________', 45);
   doc.moveDown(0.3);
 }
