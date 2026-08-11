@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  Cloud,
 } from 'lucide-react';
 import { api, BASE, guardarUrlServidor, obtenerBaseUrl } from '../api/client';
 import { ValorConfig, EstadoWhatsApp } from '../api/types';
@@ -39,7 +40,22 @@ interface SyncEstado {
   rondas?: number;
   productos?: number;
   paginas?: number;
-  resumen?: { insertados: number; actualizados: number; con_error: number };
+  porcentaje?: number | null;
+  nuevos?: number;
+  solo_precio?: number;
+  cambios?: number;
+  sin_cambios?: number;
+  desactivados?: number;
+  resumen?: {
+    insertados: number;
+    actualizados: number;
+    con_error: number;
+    nuevos: number;
+    solo_precio: number;
+    cambios: number;
+    sin_cambios: number;
+    desactivados: number;
+  };
   mensaje?: string;
   actualizado?: string;
 }
@@ -65,6 +81,32 @@ export default function Configuracion() {
   const [urlServidor, setUrlServidor] = useState('');
   const [syncModal, setSyncModal] = useState(false);
   const [syncInfo, setSyncInfo] = useState<SyncEstado | null>(null);
+  const [cloudCloud, setCloudCloud] = useState('');
+  const [cloudKey, setCloudKey] = useState('');
+  const [cloudSecret, setCloudSecret] = useState('');
+  const [cloudCarpeta, setCloudCarpeta] = useState('');
+  const [cloudGuardado, setCloudGuardado] = useState(false);
+
+  const guardarCloudinary = (e: FormEvent) => {
+    e.preventDefault();
+    void accion.ejecutar(async () => {
+      for (const [clave, valor] of [
+        ['CLOUDINARY_CLOUD', cloudCloud],
+        ['CLOUDINARY_KEY', cloudKey],
+        ['CLOUDINARY_SECRET', cloudSecret],
+        ['CLOUDINARY_FOLDER', cloudCarpeta],
+      ] as const) {
+        if (valor.trim()) await api.put('/config', { clave, valor: valor.trim() });
+      }
+      await config.recargar();
+      setCloudGuardado(true);
+      setTimeout(() => setCloudGuardado(false), 5000);
+      setCloudCloud('');
+      setCloudKey('');
+      setCloudSecret('');
+      setCloudCarpeta('');
+    });
+  };
 
   const faseTexto =
     syncInfo?.estado === 'iniciando'
@@ -81,6 +123,10 @@ export default function Configuracion() {
 
   const valorDe = (clave: string): string =>
     config.datos?.find((c) => c.clave === clave)?.valor ?? '';
+  const cloudCloudActual = valorDe('CLOUDINARY_CLOUD');
+  const cloudKeyActual = valorDe('CLOUDINARY_KEY');
+  const cloudCarpetaActual = valorDe('CLOUDINARY_FOLDER') || 'beka';
+  const cloudConfigurado = Boolean(cloudCloudActual && cloudKeyActual);
   const margenActual = valorDe('MARGEN_GANANCIA');
   const nombreActual = valorDe('NOMBRE_NEGOCIO');
   const urlNiceActual = valorDe('NICE_URL_LOGIN');
@@ -587,6 +633,79 @@ export default function Configuracion() {
 
       <Card className="p-5 mb-4">
         <h2 className="font-semibold text-slate-800 mb-1 flex items-center gap-2">
+          <Cloud size={18} className="text-sky-600" /> Imágenes en la nube (Cloudinary)
+        </h2>
+        <p className="text-sm text-slate-500 mb-3">
+          Opcional. Si lo configuras, las imágenes que subas manualmente (productos y logo) se
+          comprimen y se alojan en tu cuenta de Cloudinary en vez de ocupar el servidor. Si lo
+          dejas vacío, todo sigue guardándose en el servidor como hasta ahora.
+        </p>
+        <p className="text-sm text-slate-500 mb-3">
+          {cloudConfigurado ? (
+            <>
+              Estado: <span className="font-semibold text-emerald-600">configurado</span> (nube{' '}
+              <span className="font-mono font-bold text-slate-700">{cloudCloudActual}</span>,
+              carpeta <span className="font-mono font-bold text-slate-700">{cloudCarpetaActual}</span>)
+            </>
+          ) : (
+            <>
+              Estado:{' '}
+              <span className="font-semibold text-slate-700">no configurado</span> — las imágenes
+              se guardan en el servidor
+            </>
+          )}
+        </p>
+        <form onSubmit={guardarCloudinary} className="flex flex-col gap-4">
+          <Campo etiqueta="Cloud name">
+            <input
+              className={inputClase}
+              autoComplete="off"
+              placeholder={cloudCloudActual || 'Ej. mi-negocio'}
+              value={cloudCloud}
+              onChange={(e) => setCloudCloud(e.target.value)}
+            />
+          </Campo>
+          <Campo etiqueta="API Key">
+            <input
+              className={inputClase}
+              autoComplete="off"
+              placeholder={cloudKeyActual || 'Ej. 123456789012345'}
+              value={cloudKey}
+              onChange={(e) => setCloudKey(e.target.value)}
+            />
+          </Campo>
+          <Campo etiqueta="API Secret">
+            <input
+              type="password"
+              className={inputClase}
+              autoComplete="new-password"
+              placeholder={cloudSecret ? '' : '••••••••••••••••'}
+              value={cloudSecret}
+              onChange={(e) => setCloudSecret(e.target.value)}
+            />
+          </Campo>
+          <Campo etiqueta="Carpeta (opcional)">
+            <input
+              className={inputClase}
+              autoComplete="off"
+              placeholder={cloudCarpetaActual}
+              value={cloudCarpeta}
+              onChange={(e) => setCloudCarpeta(e.target.value)}
+            />
+          </Campo>
+          <button type="submit" className={botonSecundario + ' self-start'}>
+            Guardar credenciales
+          </button>
+        </form>
+        {cloudGuardado && (
+          <div className="mt-3">
+            <Alerta tipo="exito" mensaje="Credenciales de Cloudinary guardadas" />
+          </div>
+        )}
+      </Card>
+
+      <Card className="p-5 mb-4">
+        <h2 className="font-semibold text-slate-800 mb-1 flex items-center gap-2">
           <Shield size={18} className="text-emerald-600" /> Usuario y contraseña de NICE
         </h2>
         <p className="text-sm text-slate-500 mb-3">
@@ -649,23 +768,41 @@ export default function Configuracion() {
                     <span className="font-semibold text-slate-800">{syncInfo.productos ?? 0}</span>
                   </li>
                   <li>
-                    Nuevos:{' '}
+                    Productos nuevos:{' '}
                     <span className="font-semibold text-slate-800">
-                      {syncInfo.resumen?.insertados ?? 0}
+                      {syncInfo.resumen?.nuevos ?? 0}
                     </span>
                   </li>
                   <li>
-                    Actualizados:{' '}
+                    Solo cambió el precio:{' '}
                     <span className="font-semibold text-slate-800">
-                      {syncInfo.resumen?.actualizados ?? 0}
+                      {syncInfo.resumen?.solo_precio ?? 0}
                     </span>
                   </li>
                   <li>
-                    Con error:{' '}
+                    Actualizados con cambios:{' '}
                     <span className="font-semibold text-slate-800">
-                      {syncInfo.resumen?.con_error ?? 0}
+                      {syncInfo.resumen?.cambios ?? 0}
                     </span>
                   </li>
+                  <li>
+                    Sin cambios:{' '}
+                    <span className="font-semibold text-slate-800">
+                      {syncInfo.resumen?.sin_cambios ?? 0}
+                    </span>
+                  </li>
+                  <li>
+                    Quitados del catálogo:{' '}
+                    <span className="font-semibold text-slate-800">
+                      {syncInfo.resumen?.desactivados ?? 0}
+                    </span>
+                  </li>
+                  {syncInfo.resumen && syncInfo.resumen.con_error > 0 && (
+                    <li className="text-red-600">
+                      Con error:{' '}
+                      <span className="font-semibold">{syncInfo.resumen.con_error}</span>
+                    </li>
+                  )}
                 </ul>
                 <button
                   onClick={() => setSyncModal(false)}
@@ -690,15 +827,45 @@ export default function Configuracion() {
                 </button>
               </>
             ) : (
-              <div className="flex flex-col items-center py-4">
+              <div className="flex flex-col items-center py-2">
                 <Loader2 size={36} className="text-marca-600 animate-spin mb-3" />
                 <p className="text-sm text-slate-600 mb-1">{faseTexto}</p>
-                {syncInfo && (syncInfo.productos ?? 0) > 0 && (
-                  <p className="text-xs text-slate-400">
-                    {syncInfo.productos} productos extraídos
-                    {typeof syncInfo.rondas === 'number' ? ` · ronda ${syncInfo.rondas}` : ''}
+                {typeof syncInfo?.porcentaje === 'number' && syncInfo.fase === 'guardando' ? (
+                  <div className="w-full mt-2 mb-1">
+                    <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full bg-marca-600 rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(100, syncInfo.porcentaje)}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-500 text-center mt-1">
+                      Guardando… {syncInfo.porcentaje}%
+                    </p>
+                  </div>
+                ) : syncInfo?.fase === 'extrayendo' ? (
+                  <div className="w-full mt-2 mb-1">
+                    <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                      <div className="h-full w-1/3 bg-marca-600 rounded-full animate-pulse" />
+                    </div>
+                    <p className="text-[11px] text-slate-500 text-center mt-1">
+                      Extrayendo productos…{' '}
+                      {syncInfo.productos != null ? `${syncInfo.productos} hasta ahora` : ''}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {syncInfo?.productos != null ? `${syncInfo.productos} productos extraídos` : ''}
+                    {typeof syncInfo?.rondas === 'number'
+                      ? ` · ronda ${syncInfo.rondas}`
+                      : ''}
                   </p>
                 )}
+                {(syncInfo?.nuevos || syncInfo?.solo_precio || syncInfo?.cambios) ? (
+                  <p className="text-[11px] text-slate-500 mt-1 text-center">
+                    Nuevos {syncInfo.nuevos} · Solo precio {syncInfo.solo_precio} · Con cambios{' '}
+                    {syncInfo.cambios}
+                  </p>
+                ) : null}
               </div>
             )}
           </div>

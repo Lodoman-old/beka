@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import * as sistema from '../services/sistema.service';
+import { subirLogo } from '../services/imagenes.service';
 import { estadoWhatsApp } from '../services/whatsapp.service';
 import { envolver, stringObligatorio } from '../utils/http';
 import { env } from '../config/env';
@@ -40,7 +41,14 @@ router.get(
 router.put(
   '/logo',
   envolver(async (req, res) => {
-    sistema.guardarLogo(stringObligatorio(req.body?.imagen, 'imagen'));
+    const imagen = stringObligatorio(req.body?.imagen, 'imagen');
+    sistema.guardarLogo(imagen);
+    try {
+      const urlCloud = await subirLogo(imagen);
+      if (urlCloud) await sistema.guardarValor('LOGO_URL', urlCloud);
+    } catch (e) {
+      console.error('[config] no pude subir el logo a Cloudinary:', (e as Error).message);
+    }
     res.json({ ok: true });
   })
 );
@@ -49,7 +57,16 @@ router.delete(
   '/logo',
   envolver(async (_req, res) => {
     sistema.eliminarLogo();
+    await sistema.guardarValor('LOGO_URL', '');
     res.json({ ok: true });
+  })
+);
+
+router.get(
+  '/logo-url',
+  envolver(async (_req, res) => {
+    const url = await sistema.obtenerValor('LOGO_URL');
+    res.json({ url: url || null });
   })
 );
 

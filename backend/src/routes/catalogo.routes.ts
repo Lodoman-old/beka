@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as catalogo from '../services/catalogo.service';
+import { subirImagen } from '../services/imagenes.service';
 import {
   envolver,
   paginacion,
@@ -10,6 +11,15 @@ import {
 } from '../utils/http';
 
 const router = Router();
+
+router.post(
+  '/imagen',
+  envolver(async (req, res) => {
+    const datos = stringObligatorio(req.body?.imagen, 'imagen');
+    const url = await subirImagen(datos);
+    res.json({ url });
+  })
+);
 
 router.get(
   '/',

@@ -22,30 +22,41 @@ let ultimaLimpieza: {
   borrados: number;
   sesionExiste: boolean;
   entradas: string[];
+  encontrados: string[];
   error?: string;
 } | null = null;
+let fallosCandado = 0;
 let errorInicializacion: string | null = null;
 let reintentos: ReturnType<typeof setInterval> | null = null;
 let reintentoTimer: ReturnType<typeof setTimeout> | null = null;
 
 function limpiarCandadoPerfil(): void {
   const dir = env.WHATSAPP_SESION_DIR;
-  const reporte: { borrados: number; sesionExiste: boolean; entradas: string[]; error?: string } = {
+  const raices = [dir, path.dirname(dir), '/app/.wwebjs_auth'];
+  const reporte: {
+    borrados: number;
+    sesionExiste: boolean;
+    entradas: string[];
+    encontrados: string[];
+    error?: string;
+  } = {
     borrados: 0,
     sesionExiste: false,
     entradas: [],
+    encontrados: [],
   };
   try {
-    if (!fs.existsSync(dir)) {
-      ultimaLimpieza = { dir, ...reporte };
-      return;
+    if (fs.existsSync(dir)) {
+      reporte.sesionExiste = fs.existsSync(path.join(dir, 'session'));
+      reporte.entradas = fs
+        .readdirSync(dir)
+        .slice(0, 40)
+        .map((e) => e.slice(0, 40));
     }
-    reporte.sesionExiste = fs.existsSync(path.join(dir, 'session'));
-    reporte.entradas = fs
-      .readdirSync(dir)
-      .slice(0, 40)
-      .map((e) => e.slice(0, 40));
-    const pendientes: string[] = [dir];
+    const pendientes: string[] = [];
+    for (const raiz of raices) {
+      if (fs.existsSync(raiz)) pendientes.push(raiz);
+    }
     let borrados = 0;
     while (pendientes.length > 0) {
       const actual = pendientes.pop() as string;
@@ -61,6 +72,7 @@ function limpiarCandadoPerfil(): void {
           if (entrada === 'Singleton') {
             fs.rmSync(ruta, { recursive: true, force: true });
             borrados += 1;
+            reporte.encontrados.push(ruta);
             console.log('[whatsapp] candado eliminado:', ruta);
           } else {
             pendientes.push(ruta);
@@ -68,6 +80,7 @@ function limpiarCandadoPerfil(): void {
         } else if (entrada.startsWith('Singleton')) {
           fs.rmSync(ruta, { force: true });
           borrados += 1;
+          reporte.encontrados.push(ruta);
           console.log('[whatsapp] candado eliminado:', ruta);
         }
       }
@@ -79,6 +92,22 @@ function limpiarCandadoPerfil(): void {
     console.error('[whatsapp] no pude limpiar el candado del perfil:', reporte.error);
   }
   ultimaLimpieza = { dir, ...reporte };
+}
+
+function reubicarSesion(): void {
+  const dir = env.WHATSAPP_SESION_DIR;
+  const origen = path.join(dir, 'session');
+  try {
+    if (!fs.existsSync(origen)) return;
+    const destino = path.join(dir, `session-respaldo-${Date.now()}`);
+    fs.renameSync(origen, destino);
+    console.log(
+      '[whatsapp] demasiados fallos de candado: la sesion se movio a ' + destino +
+      ' y se reiniciara desde cero (necesitara escanear el QR)'
+    );
+  } catch (e) {
+    console.error('[whatsapp] no pude mover la sesion:', (e as Error).message);
+  }
 }
 
 function programarReintento(): void {
@@ -263,6 +292,16 @@ export function inicializarWhatsApp(): void {
     void cliente.initialize().catch((e) => {
       errorInicializacion = 'No se pudo iniciar el navegador de WhatsApp: ' + String(e?.message || e);
       console.error('[whatsapp]', errorInicializacion);
+      if (/process_singleton|in use by another Chromium/i.test(errorInicializacion)) {
+        fallosCandado += 1;
+        console.log(`[whatsapp] fallo de candado #${fallosCandado}`);
+        if (fallosCandado >= 5) {
+          fallosCandado = 0;
+          reubicarSesion();
+        }
+      } else {
+        fallosCandado = 0;
+      }
       programarReintento();
     });
   } catch (e) {

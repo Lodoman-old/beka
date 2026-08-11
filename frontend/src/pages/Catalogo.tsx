@@ -17,6 +17,7 @@ import {
   EncabezadoPagina,
 } from '../components/ui';
 import { moneda, msjError } from '../lib/format';
+import { subirImagenProducto, descripcionPeso } from '../lib/imagen';
 
 export default function Catalogo() {
   const [busqueda, setBusqueda] = useState('');
@@ -27,6 +28,22 @@ export default function Catalogo() {
   const [tarjeta, setTarjeta] = useState<null | { tipo: 'error' | 'exito'; msg: string }>(null);
   const [nuevo, setNuevo] = useState(false);
   const [formNuevo, setFormNuevo] = useState({ sku: '', nombre: '', precio_costo: '', imagen: '' });
+  const [subiendoNuevo, setSubiendoNuevo] = useState(false);
+
+  const manejarArchivoNuevo = async (archivo: File | undefined) => {
+    if (!archivo) return;
+    try {
+      setSubiendoNuevo(true);
+      const pesoOriginal = descripcionPeso(archivo);
+      const url = await subirImagenProducto(archivo);
+      setFormNuevo((f) => ({ ...f, imagen: url }));
+      setTarjeta({ tipo: 'exito', msg: `Imagen subida (${pesoOriginal} → comprimida)` });
+    } catch (e) {
+      setTarjeta({ tipo: 'error', msg: msjError(e) });
+    } finally {
+      setSubiendoNuevo(false);
+    }
+  };
 
   const listado = useApi<ItemCatalog>(
     () => api.get(`/catalogo${q({ busqueda, limite: '60' })}`),
@@ -138,6 +155,7 @@ export default function Catalogo() {
           <div className="flex items-center gap-3">
             <img
               src={resultadoSku.imagen || undefined}
+              referrerPolicy="no-referrer"
               alt=""
               className="w-16 h-16 rounded-xl object-cover bg-slate-100 shrink-0"
             />
@@ -173,7 +191,12 @@ export default function Catalogo() {
               <button className="block w-full text-left" onClick={() => setEditar(p)}>
                 <div className="w-full h-24 rounded-xl bg-slate-100 overflow-hidden mb-2">
                   {p.imagen ? (
-                    <img src={p.imagen} alt={p.nombre} className="w-full h-full object-cover" />
+                    <img
+                      src={p.imagen}
+                      referrerPolicy="no-referrer"
+                      alt={p.nombre}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-300">
                       <Package size={28} />
@@ -265,8 +288,37 @@ export default function Catalogo() {
               onChange={(e) => setFormNuevo({ ...formNuevo, imagen: e.target.value })}
             />
           </Campo>
+          <div className="flex items-center gap-3 mb-4">
+            <label
+              className={
+                botonSecundario +
+                ' cursor-pointer !py-2 text-sm' +
+                (subiendoNuevo ? ' opacity-50 pointer-events-none' : '')
+              }
+            >
+              {subiendoNuevo ? 'Comprimiendo y subiendo…' : 'Subir imagen del archivo'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={(e) => {
+                  void manejarArchivoNuevo(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            {formNuevo.imagen && (
+              <img
+                src={formNuevo.imagen}
+                referrerPolicy="no-referrer"
+                alt="Vista previa"
+                className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-white"
+              />
+            )}
+          </div>
           <p className="text-xs text-slate-400 mb-4">
-            El precio al público se calcula solo con el margen configurado.
+            La imagen se comprime automáticamente (máx. 900 px) antes de subirse. Si hay Cloudinary
+            configurado, se aloja ahí; si no, en el servidor.
           </p>
           {accion.error && <div className="mb-3"><Alerta tipo="error" mensaje={accion.error} /></div>}
           <div className="flex gap-3 justify-end">
@@ -299,6 +351,22 @@ function FormProducto({
   const [margen, setMargen] = useState(String(producto.margen_aplicado));
   const [imagen, setImagen] = useState(producto.imagen ?? '');
   const [activo, setActivo] = useState(producto.activo);
+  const [subiendo, setSubiendo] = useState(false);
+  const [errorSubir, setErrorSubir] = useState<string | null>(null);
+
+  const manejarArchivo = async (archivo: File | undefined) => {
+    if (!archivo) return;
+    try {
+      setSubiendo(true);
+      setErrorSubir(null);
+      const url = await subirImagenProducto(archivo);
+      setImagen(url);
+    } catch (e) {
+      setErrorSubir(msjError(e));
+    } finally {
+      setSubiendo(false);
+    }
+  };
 
   return (
     <form
@@ -341,6 +409,39 @@ function FormProducto({
           onChange={(e) => setImagen(e.target.value)}
         />
       </Campo>
+      <div className="flex items-center gap-3 mb-4">
+        <label
+          className={
+            botonSecundario +
+            ' cursor-pointer !py-2 text-sm' +
+            (subiendo ? ' opacity-50 pointer-events-none' : '')
+          }
+        >
+          {subiendo ? 'Comprimiendo y subiendo…' : 'Subir imagen del archivo'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              void manejarArchivo(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+        </label>
+        {imagen && (
+          <img
+            src={imagen}
+            referrerPolicy="no-referrer"
+            alt="Vista previa"
+            className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-white"
+          />
+        )}
+      </div>
+      {errorSubir && (
+        <div className="mb-3">
+          <Alerta tipo="error" mensaje={errorSubir} />
+        </div>
+      )}
       <p className="text-sm text-slate-500 mb-4">
         Precio al público calculado:{' '}
         <span className="font-bold text-emerald-600">

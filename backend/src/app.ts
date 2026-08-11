@@ -20,6 +20,7 @@ import authRouter from './routes/auth.routes';
 import portalRouter from './routes/portal.routes';
 import { necesitaAuth, necesitaRol, ROL_ADMIN } from './services/auth.service';
 import { envolver } from './utils/http';
+import { rutaArchivoImagen } from './services/imagenes.service';
 
 export function crearApp(): Application {
   const app: Application = express();
@@ -47,6 +48,18 @@ export function crearApp(): Application {
   api.use('/auth', authRouter);
   api.use('/portal', portalRouter);
   api.get('/config/whatsapp-qr', envolver(manejarQrWhatsApp));
+  api.get(
+    '/img/:nombre',
+    envolver(async (req: Request, res: Response) => {
+      const ruta = rutaArchivoImagen(req.params.nombre);
+      if (!ruta) {
+        res.status(404).json({ error: 'Imagen no encontrada' });
+        return;
+      }
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.sendFile(ruta);
+    })
+  );
 
   api.use(necesitaAuth, necesitaRol(ROL_ADMIN));
   api.use('/clientes', clientesRouter);

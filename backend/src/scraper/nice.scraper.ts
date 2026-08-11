@@ -17,6 +17,11 @@ export interface ProgresoScrape {
   fase: 'tienda' | 'extrayendo' | 'guardando';
   rondas?: number;
   productos?: number;
+  porcentaje?: number | null;
+  nuevos?: number;
+  solo_precio?: number;
+  cambios?: number;
+  sin_cambios?: number;
 }
 
 async function cerrarBanners(page: Page): Promise<void> {
@@ -188,8 +193,18 @@ export async function extraerCatalogoNice(
     console.log(
       `[nice] ${productos.length} productos extraidos en ${rondas} rondas, guardando...`
     );
-    onProgreso?.({ fase: 'guardando', rondas, productos: productos.length });
-    const resumen = await upsertMasivo(productos, margen);
+    onProgreso?.({ fase: 'guardando', rondas, productos: productos.length, porcentaje: 0 });
+    const resumen = await upsertMasivo(productos, margen, (pro) => {
+      onProgreso?.({
+        fase: 'guardando',
+        productos: pro.total,
+        porcentaje: pro.total > 0 ? Math.round((pro.procesados / pro.total) * 100) : 100,
+        nuevos: pro.nuevos,
+        solo_precio: pro.solo_precio,
+        cambios: pro.cambios,
+        sin_cambios: pro.sin_cambios,
+      });
+    });
     console.log(
       `[nice] sincronizacion completada: ${resumen.insertados} insertados, ${resumen.actualizados} actualizados, ${resumen.con_error} con error`
     );

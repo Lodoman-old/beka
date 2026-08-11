@@ -21,6 +21,7 @@ async function principal(): Promise<void> {
       resumen: resultado.resumen,
       productos: resultado.productos_extraidos,
       paginas: resultado.paginas_procesadas,
+      porcentaje: 100,
     });
     console.log('Resultado:', JSON.stringify(resultado, null, 2));
     process.exit(0);
