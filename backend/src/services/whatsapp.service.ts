@@ -409,7 +409,7 @@ async function bloquePortal(telefono: string | null | undefined): Promise<string
     if (!portalUrl) return '';
     const credenciales = await asegurarCredencialesPortal(telefono);
     if (!credenciales) return '';
-    const url = `${portalUrl.replace(/\/+$/, '')}/portal`;
+    const url = `${portalUrl.replace(/\/+$/, '').replace(/\/portal$/i, '')}/portal`;
     return ['', '🌐 *Consulta tus cuentas en línea*:', `📲 ${url}`, `👤 Usuario: ${credenciales.usuario_portal}`, `🔑 Contraseña: ${credenciales.pass_plano_portal}`].join('\n');
   } catch (e) {
     console.error('[whatsapp] no pude armar el bloque del portal:', (e as Error).message);
