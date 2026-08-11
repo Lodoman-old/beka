@@ -1,8 +1,9 @@
 # ---------- Etapa 1: compilar el frontend ----------
 FROM node:20-bookworm-slim AS frontend
 WORKDIR /app/frontend
+ENV NODE_OPTIONS=--max-old-space-size=1536
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --no-progress
 COPY frontend/ ./
 RUN npm run build
 
@@ -10,8 +11,9 @@ RUN npm run build
 FROM node:20-bookworm-slim AS backend
 WORKDIR /app/backend
 ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV NODE_OPTIONS=--max-old-space-size=1536
 COPY backend/package.json backend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --no-progress
 COPY backend/tsconfig.json ./
 COPY backend/src ./src
 RUN npm run build
