@@ -132,6 +132,7 @@ export function inicializarWhatsApp(): void {
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         executablePath: env.CHROME_EXECUTABLE,
+        protocolTimeout: 300000,
       },
     });
 
