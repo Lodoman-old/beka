@@ -1,0 +1,35 @@
+# Dependencias
+node_modules/
+
+# Builds
+dist/
+build/
+
+# Entorno
+.env
+.env.local
+
+# Datos locales (sesion de WhatsApp, QR, PDFs generados)
+backend/data/
+backend/.wwebjs_cache/
+
+# Proyecto Android (se regenera con `npx cap add android` + `cap sync`)
+frontend/android/
+
+# APKs y llaves
+*.apk
+*.keystore
+*.jks
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Sistema
+.DS_Store
+Thumbs.db
