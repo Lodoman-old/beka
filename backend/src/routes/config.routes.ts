@@ -78,6 +78,18 @@ router.get(
   })
 );
 
+router.get(
+  '/scrape-estado',
+  envolver(async (_req, res) => {
+    const rutaEstado = path.join(sistema.DIR_DATOS, 'scrape-estado.json');
+    if (!fs.existsSync(rutaEstado)) {
+      res.json({ estado: 'nunca' });
+      return;
+    }
+    res.json(JSON.parse(fs.readFileSync(rutaEstado, 'utf8')));
+  })
+);
+
 router.post(
   '/scrape',
   envolver(async (_req, res) => {
@@ -85,12 +97,36 @@ router.post(
     if (!fs.existsSync(script)) {
       throw new Error('El script de sincronizacion no esta compilado; ejecuta npm run build');
     }
+    const rutaEstado = path.join(sistema.DIR_DATOS, 'scrape-estado.json');
+    if (fs.existsSync(rutaEstado)) {
+      try {
+        const actual = JSON.parse(fs.readFileSync(rutaEstado, 'utf8'));
+        if (actual.estado === 'ejecutando' || actual.estado === 'iniciando') {
+          res.status(409).json({ error: 'Ya hay una sincronizacion del catalogo en curso' });
+          return;
+        }
+      } catch {
+        // archivo corrupto; se sobrescribe
+      }
+    }
+    fs.writeFileSync(
+      rutaEstado,
+      JSON.stringify({ estado: 'iniciando', actualizado: new Date().toISOString() })
+    );
     const hijo = spawn(process.execPath, [script], {
       stdio: 'inherit',
-      env: { ...process.env },
+      env: { ...process.env, SCRAPE_ESTADO_FILE: rutaEstado },
     });
     hijo.on('error', (e) => {
       console.error('[scrape] no se pudo lanzar el proceso:', e.message);
+      fs.writeFileSync(
+        rutaEstado,
+        JSON.stringify({
+          estado: 'error',
+          mensaje: 'No se pudo lanzar el proceso: ' + e.message,
+          actualizado: new Date().toISOString(),
+        })
+      );
     });
     res.json({ ok: true, mensaje: 'Sincronizacion del catalogo iniciada en segundo plano' });
   })

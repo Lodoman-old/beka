@@ -13,10 +13,10 @@ export interface ResultadoScrape {
   resumen: Awaited<ReturnType<typeof upsertMasivo>>;
 }
 
-function limpiarPrecio(texto: string): number {
-  const limpio = texto.replace(/[^0-9.,]/g, '').replace(/,/g, '');
-  const numero = parseFloat(limpio);
-  return Number.isFinite(numero) ? numero : 0;
+export interface ProgresoScrape {
+  fase: 'tienda' | 'extrayendo' | 'guardando';
+  rondas?: number;
+  productos?: number;
 }
 
 async function cerrarBanners(page: Page): Promise<void> {
@@ -92,7 +92,9 @@ async function cargarMasSiExiste(page: Page): Promise<boolean> {
   }
 }
 
-export async function extraerCatalogoNice(): Promise<ResultadoScrape> {
+export async function extraerCatalogoNice(
+  onProgreso?: (progreso: ProgresoScrape) => void
+): Promise<ResultadoScrape> {
   const { usuario, clave } = await niceCredenciales();
   if (!usuario || !clave) {
     throw new Error(
@@ -148,18 +150,21 @@ export async function extraerCatalogoNice(): Promise<ResultadoScrape> {
       })
       .catch(() => undefined);
     console.log('[nice] sesion iniciada:', page.url());
+    onProgreso?.({ fase: 'tienda' });
 
     const urlTienda = `https://backoffice.niceonline.com/${usuario}nb/Products?nPage=1`;
     console.log('[nice] abriendo la tienda:', urlTienda);
     await page.goto(urlTienda, { waitUntil: 'networkidle2', timeout: env.NICE_TIMEOUT_MS });
     await new Promise((r) => setTimeout(r, 3000));
     await cerrarBanners(page);
+    onProgreso?.({ fase: 'extrayendo', rondas: 0, productos: 0 });
 
     console.log('[nice] extrayendo catalogo...');
     for (let i = 0; i < Math.min(env.NICE_PAGINAS_MAX, 500); i++) {
       const antes = (await page.$$(env.NICE_SEL_FILA)).length;
       const filasPagina = await extraerTarjetas(page);
       productos.push(...filasPagina);
+      onProgreso?.({ fase: 'extrayendo', rondas: rondas + 1, productos: productos.length });
       const hayMas = await cargarMasSiExiste(page);
       if (!hayMas) {
         rondas += 1;
@@ -183,6 +188,7 @@ export async function extraerCatalogoNice(): Promise<ResultadoScrape> {
     console.log(
       `[nice] ${productos.length} productos extraidos en ${rondas} rondas, guardando...`
     );
+    onProgreso?.({ fase: 'guardando', rondas, productos: productos.length });
     const resumen = await upsertMasivo(productos, margen);
     console.log(
       `[nice] sincronizacion completada: ${resumen.insertados} insertados, ${resumen.actualizados} actualizados, ${resumen.con_error} con error`

@@ -14,6 +14,9 @@ import {
   KeyRound,
   Link2,
   Server,
+  CheckCircle2,
+  XCircle,
+  Loader2,
 } from 'lucide-react';
 import { api, BASE, guardarUrlServidor, obtenerBaseUrl } from '../api/client';
 import { ValorConfig, EstadoWhatsApp } from '../api/types';
@@ -29,6 +32,17 @@ import {
   EncabezadoPagina,
 } from '../components/ui';
 import { fechaHora } from '../lib/format';
+
+interface SyncEstado {
+  estado: 'nunca' | 'iniciando' | 'ejecutando' | 'ok' | 'error';
+  fase?: 'tienda' | 'extrayendo' | 'guardando';
+  rondas?: number;
+  productos?: number;
+  paginas?: number;
+  resumen?: { insertados: number; actualizados: number; con_error: number };
+  mensaje?: string;
+  actualizado?: string;
+}
 
 export default function Configuracion() {
   const config = useApi<ValorConfig[]>(() => api.get('/config'), []);
@@ -49,6 +63,19 @@ export default function Configuracion() {
   const [logoExiste, setLogoExiste] = useState<boolean | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [urlServidor, setUrlServidor] = useState('');
+  const [syncModal, setSyncModal] = useState(false);
+  const [syncInfo, setSyncInfo] = useState<SyncEstado | null>(null);
+
+  const faseTexto =
+    syncInfo?.estado === 'iniciando'
+      ? 'Iniciando…'
+      : syncInfo?.fase === 'tienda'
+        ? 'Abriendo la tienda NICE…'
+        : syncInfo?.fase === 'extrayendo'
+          ? 'Extrayendo productos…'
+          : syncInfo?.fase === 'guardando'
+            ? 'Guardando en el catálogo…'
+            : 'Trabajando…';
 
   const esMovil = Capacitor.isNativePlatform();
 
@@ -156,13 +183,43 @@ export default function Configuracion() {
     });
   };
 
+  const esperarSync = (intentos: number) => {
+    setTimeout(() => {
+      void api
+        .get<SyncEstado>('/config/scrape-estado')
+        .then((e) => {
+          setSyncInfo(e);
+          if (e.estado === 'ok' || e.estado === 'error') {
+            void config.recargar();
+            return;
+          }
+          if (intentos < 150) esperarSync(intentos + 1);
+          else
+            setSyncInfo({
+              estado: 'error',
+              mensaje: 'Tardó demasiado; revisa los logs del servidor.',
+            });
+        })
+        .catch(() => {
+          if (intentos < 150) esperarSync(intentos + 1);
+        });
+    }, 4000);
+  };
+
   const sincronizar = () => {
-    void accion.ejecutar(async () => {
-      await api.post('/config/scrape');
-      await config.recargar();
-      setTimeout(() => void config.recargar(), 8000);
-      setTimeout(() => void config.recargar(), 20000);
-    });
+    setSyncModal(true);
+    setSyncInfo({ estado: 'iniciando' });
+    void accion
+      .ejecutar(async () => {
+        await api.post('/config/scrape');
+        esperarSync(0);
+      })
+      .catch(() => {
+        setSyncInfo({
+          estado: 'error',
+          mensaje: accion.error ?? 'No se pudo iniciar la sincronización',
+        });
+      });
   };
 
   const comprobarLogo = () => {
@@ -424,8 +481,8 @@ export default function Configuracion() {
         </p>
         <p className="text-xs text-slate-400 mb-3">
           Usa el usuario, la contraseña y la URL que configuras en esta página (las del archivo
-          .env solo valen de respaldo inicial). El proceso corre en segundo plano en el VPS y los
-          resultados aparecen en: <code className="bg-slate-100 px-1 rounded">docker compose logs -f api</code>
+          .env solo valen de respaldo inicial). El proceso corre en segundo plano en el VPS y verás
+          su avance en esta misma ventana.
         </p>
         <button onClick={sincronizar} className={botonPrimario}>
           <RefreshCw size={16} /> Sincronizar catálogo ahora
@@ -574,6 +631,79 @@ export default function Configuracion() {
           archivo .env.
         </p>
       </Card>
+
+      {syncModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
+            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <Database size={18} className="text-marca-600" /> Sincronizar catálogo NICE
+            </h3>
+            {syncInfo?.estado === 'ok' ? (
+              <>
+                <div className="flex items-center gap-2 text-emerald-600 font-semibold mb-3">
+                  <CheckCircle2 size={20} /> Sincronización completada
+                </div>
+                <ul className="text-sm text-slate-600 space-y-1 mb-4">
+                  <li>
+                    Productos extraídos:{' '}
+                    <span className="font-semibold text-slate-800">{syncInfo.productos ?? 0}</span>
+                  </li>
+                  <li>
+                    Nuevos:{' '}
+                    <span className="font-semibold text-slate-800">
+                      {syncInfo.resumen?.insertados ?? 0}
+                    </span>
+                  </li>
+                  <li>
+                    Actualizados:{' '}
+                    <span className="font-semibold text-slate-800">
+                      {syncInfo.resumen?.actualizados ?? 0}
+                    </span>
+                  </li>
+                  <li>
+                    Con error:{' '}
+                    <span className="font-semibold text-slate-800">
+                      {syncInfo.resumen?.con_error ?? 0}
+                    </span>
+                  </li>
+                </ul>
+                <button
+                  onClick={() => setSyncModal(false)}
+                  className={botonPrimario + ' w-full'}
+                >
+                  Cerrar
+                </button>
+              </>
+            ) : syncInfo?.estado === 'error' ? (
+              <>
+                <div className="flex items-center gap-2 text-red-600 font-semibold mb-3">
+                  <XCircle size={20} /> La sincronización falló
+                </div>
+                <p className="text-sm text-slate-600 mb-4 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {syncInfo.mensaje}
+                </p>
+                <button
+                  onClick={() => setSyncModal(false)}
+                  className={botonPrimario + ' w-full'}
+                >
+                  Cerrar
+                </button>
+              </>
+            ) : (
+              <div className="flex flex-col items-center py-4">
+                <Loader2 size={36} className="text-marca-600 animate-spin mb-3" />
+                <p className="text-sm text-slate-600 mb-1">{faseTexto}</p>
+                {syncInfo && (syncInfo.productos ?? 0) > 0 && (
+                  <p className="text-xs text-slate-400">
+                    {syncInfo.productos} productos extraídos
+                    {typeof syncInfo.rondas === 'number' ? ` · ronda ${syncInfo.rondas}` : ''}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
