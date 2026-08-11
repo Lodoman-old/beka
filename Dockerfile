@@ -16,6 +16,7 @@ COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --no-audit --no-fund --no-progress
 COPY backend/tsconfig.json ./
 COPY backend/src ./src
+COPY backend/scripts ./scripts
 RUN npm run build
 
 # ---------- Etapa 3: imagen final con Chrome para WhatsApp ----------

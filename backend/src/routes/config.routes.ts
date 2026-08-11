@@ -81,7 +81,7 @@ router.get(
 router.post(
   '/scrape',
   envolver(async (_req, res) => {
-    const script = path.join(__dirname, '..', 'scripts', 'sync-catalogo.js');
+    const script = path.join(__dirname, '..', '..', 'scripts', 'sync-catalogo.js');
     if (!fs.existsSync(script)) {
       throw new Error('El script de sincronizacion no esta compilado; ejecuta npm run build');
     }
