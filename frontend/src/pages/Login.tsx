@@ -117,7 +117,7 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
           <div className="flex items-center justify-center">
-            <Logo>
+            <Logo alto="h-24">
               <span className="text-4xl font-black text-white tracking-tight">
                 BEKA<span className="text-marca-500">.</span>
               </span>

@@ -27,12 +27,14 @@ export default function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-100 md:pl-64">
       <aside className="hidden md:flex fixed inset-y-0 left-0 w-64 bg-slate-900 flex-col z-40">
-        <div className="px-6 py-6 border-b border-slate-800">
-          <Logo alto="h-12">
-            <span className="text-2xl font-black text-white tracking-tight">
-              BEKA<span className="text-marca-500">.</span>
-            </span>
-          </Logo>
+        <div className="px-6 py-6 border-b border-slate-800 text-center">
+          <div className="flex items-center justify-center">
+            <Logo alto="h-14">
+              <span className="text-2xl font-black text-white tracking-tight">
+                BEKA<span className="text-marca-500">.</span>
+              </span>
+            </Logo>
+          </div>
           <p className="text-xs text-slate-400 mt-2">Gestión de negocio</p>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
