@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+
 export const BASE =
   (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_URL ?? '';
 
@@ -88,20 +91,13 @@ export const api = {
   },
 };
 
-export async function descargarComprobante(ruta: string, nombreArchivo: string): Promise<void> {
-  const respuesta = await fetch(`${obtenerBaseUrl()}/api${ruta}`, {
-    headers: { Authorization: `Bearer ${obtenerToken()}` },
-  });
-  if (!respuesta.ok) throw new Error('No se pudo descargar el comprobante');
-  const blob = await respuesta.blob();
-  const url = URL.createObjectURL(blob);
-  const enlace = document.createElement('a');
-  enlace.href = url;
-  enlace.download = nombreArchivo;
-  document.body.appendChild(enlace);
-  enlace.click();
-  enlace.remove();
-  URL.revokeObjectURL(url);
+export async function descargarComprobante(ruta: string, _nombreArchivo: string): Promise<void> {
+  const url = `${obtenerBaseUrl()}/api${ruta}?token=${encodeURIComponent(obtenerToken() ?? '')}`;
+  if (Capacitor.isNativePlatform()) {
+    await Browser.open({ url });
+    return;
+  }
+  window.open(url, '_blank', 'noopener');
 }
 
 export function q(objeto: Record<string, string | number | undefined | null>): string {

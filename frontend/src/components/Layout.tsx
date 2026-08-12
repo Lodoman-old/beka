@@ -94,7 +94,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      <header className="md:hidden sticky top-0 z-40 bg-gradient-to-r from-sky-600 via-blue-700 to-blue-900 px-4 py-2.5 flex items-center justify-between shadow-lg">
+      <header className="md:hidden sticky top-0 z-40 bg-gradient-to-r from-[#0d2b58] via-[#0a2140] to-[#06152a] px-4 py-2.5 flex items-center justify-between shadow-lg">
         <Logo alto="h-10">
           <span className="font-black text-white">
             BEKA<span className="text-sky-300">.</span>

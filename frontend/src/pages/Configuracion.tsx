@@ -19,7 +19,7 @@ import {
   Loader2,
   Cloud,
 } from 'lucide-react';
-import { api, BASE, guardarUrlServidor, obtenerBaseUrl } from '../api/client';
+import { api, guardarUrlServidor, obtenerBaseUrl } from '../api/client';
 import { ValorConfig, EstadoWhatsApp } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
 import {
@@ -269,7 +269,7 @@ export default function Configuracion() {
   };
 
   const comprobarLogo = () => {
-    void fetch(`${BASE}/api/config/logo`, { method: 'GET' })
+    void fetch(`${obtenerBaseUrl()}/api/config/logo`, { method: 'GET' })
       .then((r) => setLogoExiste(r.ok))
       .catch(() => setLogoExiste(false));
   };
@@ -564,7 +564,7 @@ export default function Configuracion() {
               Pendiente: escanea el QR con tu WhatsApp (Ajustes → Dispositivos vinculados → Vincular
               un dispositivo). Se refresca cada pocos segundos.
               <img
-                src={`${BASE}/api/config/whatsapp-qr?v=${Date.now()}`}
+                src={`${obtenerBaseUrl()}/api/config/whatsapp-qr?v=${Date.now()}`}
                 alt="Código QR de WhatsApp"
                 className="mt-3 w-56 h-56 rounded-lg bg-white p-2 border border-amber-200"
               />
@@ -589,7 +589,7 @@ export default function Configuracion() {
         <div className="flex items-center gap-4">
           {logoExiste ? (
             <img
-              src={`${BASE}/api/config/logo?v=${logoVersion}`}
+              src={`${obtenerBaseUrl()}/api/config/logo?v=${logoVersion}`}
               alt="Logo del negocio"
               className="w-16 h-16 rounded-xl object-cover border border-slate-200 bg-white"
             />

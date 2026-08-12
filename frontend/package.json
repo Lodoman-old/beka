@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^6.1.0",
+    "@capacitor/browser": "^6.0.6",
     "@capacitor/core": "^6.1.0",
     "@capgo/capacitor-native-biometric": "^6.0.4",
     "html5-qrcode": "^2.3.8",

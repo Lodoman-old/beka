@@ -21,14 +21,18 @@ export function firmarToken(claim: Claim): string {
 
 export function leerToken(req: Request): Claim | null {
   const encabezado = req.headers.authorization;
-  if (encabezado && encabezado.startsWith('Bearer ')) {
-    try {
-      return jwt.verify(encabezado.slice(7), SECRETO) as Claim;
-    } catch {
-      return null;
-    }
+  const crudo =
+    encabezado && encabezado.startsWith('Bearer ')
+      ? encabezado.slice(7)
+      : typeof req.query.token === 'string'
+        ? req.query.token
+        : null;
+  if (!crudo) return null;
+  try {
+    return jwt.verify(crudo, SECRETO) as Claim;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 export function hashPassword(plana: string): Promise<string> {

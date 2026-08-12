@@ -1,4 +1,4 @@
-import { BASE, api } from '../api/client';
+import { api, obtenerBaseUrl } from '../api/client';
 import { Cliente, Producto, Viaje, Venta } from '../api/types';
 import {
   AccionPendiente,
@@ -21,7 +21,7 @@ export async function hayConexion(): Promise<boolean> {
   try {
     const control = new AbortController();
     const temporizador = setTimeout(() => control.abort(), 5000);
-    const respuesta = await fetch(`${BASE}/api/config`, { signal: control.signal });
+    const respuesta = await fetch(`${obtenerBaseUrl()}/api/config`, { signal: control.signal });
     clearTimeout(temporizador);
     return respuesta.ok;
   } catch {
