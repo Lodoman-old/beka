@@ -91,12 +91,12 @@ export default function Portal() {
   if (sesion && datos) {
     return (
       <div className="min-h-screen bg-slate-100 pb-8">
-        <div className="bg-gradient-to-r from-sky-600 via-blue-700 to-blue-900 text-white px-4 py-6">
+        <div className="bg-gradient-to-r from-[#0d2b58] via-[#0a2140] to-[#06152a] text-white px-4 py-6">
           <div className="max-w-2xl mx-auto flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Logo alto="h-11" />
+            <div className="flex items-center gap-4">
+              <Logo alto="h-20" />
               <div>
-                <p className="font-black text-white">Sistema BEKA</p>
+                <p className="font-black text-white text-lg leading-tight">Accesorios y Joyería</p>
                 <p className="text-xs text-sky-200">Portal de clientes</p>
               </div>
             </div>
