@@ -95,6 +95,25 @@ function limpiarCandadoPerfil(): void {
   ultimaLimpieza = { dir, ...reporte };
 }
 
+function limpiarCachePerfil(): void {
+  const dir = path.join(env.WHATSAPP_SESION_DIR, 'session', 'Default');
+  const carpetas = ['Cache', 'Code Cache', 'GPUCache', 'Dictionaries', 'CacheStorage', 'Service Worker/CacheStorage'];
+  try {
+    if (!fs.existsSync(dir)) return;
+    let borrado = 0;
+    for (const carpeta of carpetas) {
+      const ruta = path.join(dir, carpeta);
+      if (fs.existsSync(ruta)) {
+        fs.rmSync(ruta, { recursive: true, force: true });
+        borrado += 1;
+      }
+    }
+    if (borrado > 0) console.log(`[whatsapp] cache del perfil podado: ${borrado} carpetas`);
+  } catch (e) {
+    console.error('[whatsapp] no pude podar la cache del perfil:', (e as Error).message);
+  }
+}
+
 function matarProcesosChromium(): number {
   const perfil = env.WHATSAPP_SESION_DIR;
   let muertos = 0;
@@ -323,6 +342,7 @@ export function inicializarWhatsApp(): void {
   matarProcesosChromium();
   limpiarCandadoPerfil();
   restaurarSesionRespaldo();
+  limpiarCachePerfil();
 
   console.log(
     `[whatsapp] sesion en disco: ${sesionEnDisco() ? 'SI (se reutilizara)' : 'NO (se pedira QR)'}`
