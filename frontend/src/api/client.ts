@@ -34,6 +34,10 @@ export function obtenerToken(): string | null {
 
 export function cerrarSesion(): void {
   localStorage.removeItem(LOCAL_STORAGE_TOKEN);
+  if (Capacitor.isNativePlatform()) {
+    window.location.reload();
+    return;
+  }
   window.location.href = `${obtenerBaseUrl()}/login`;
 }
 
