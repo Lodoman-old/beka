@@ -38,8 +38,8 @@ function crearDocumento(titulo: string, negocio: string): PDFDoc {
   const yEmitido = Math.max(doc.y + 3, yTitulo + 17);
   doc.fillColor('#8fa3d8').fontSize(8.5).font('Helvetica').text(`Emitido: ${fechaTexto(new Date(), true)}`, 135, yEmitido, { width: 400 });
   doc.fillColor('#000000');
-  doc.font('Helvetica-Bold').fontSize(11).text('_______________________________________________________________________________', 45, 150);
-  doc.y = 160;
+  doc.font('Helvetica-Bold').fontSize(11).text('_______________________________________________________________________________', 45, 141);
+  doc.y = 166;
   return doc;
 }
 
@@ -73,7 +73,7 @@ function encabezadoTabla(doc: PDFDoc, columnas: string[], anchos: number[]): voi
 function pieDocumento(doc: PDFDoc, negocio: string): void {
   doc.moveDown(1);
   doc.font('Helvetica').fontSize(9).fillColor('#94a3b8');
-  doc.text(`Generado por BEKA · ${negocio}`, { align: 'center' });
+  doc.text(`Generado por ${negocio}`, { align: 'center' });
 }
 
 function finalizar(doc: PDFDoc): Promise<Buffer> {
