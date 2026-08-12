@@ -5,6 +5,7 @@ import { api, q } from '../api/client';
 import { Pedido, PedidoDetalle, ItemPedidos, Producto, Cliente } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
 import { cacheProductos, cacheClientes } from '../lib/sincronizador';
+import { useConfirmar } from '../components/Confirmar';
 import {
   Card,
   Modal,
@@ -60,6 +61,7 @@ export default function Pedidos() {
 
   const listado = useApi<ItemPedidos>(() => api.get(`/pedidos${q({ limite: '60' })}`), []);
   const accion = useAccion();
+  const confirmar = useConfirmar();
 
   const verDetalle = (p: Pedido) => {
     setSeleccion(p);
@@ -78,8 +80,12 @@ export default function Pedidos() {
     return ok;
   };
 
-  const marcarEntregado = (p: Pedido) => {
-    if (!confirm(`¿Marcar el pedido #${p.id} de ${p.cliente_nombre} como entregado?`)) return;
+  const marcarEntregado = async (p: Pedido) => {
+    const ok = await confirmar(
+      `¿Marcar el pedido #${p.id} de ${p.cliente_nombre} como entregado?`,
+      { titulo: 'Marcar como entregado', confirmarTexto: 'Sí, entregar' }
+    );
+    if (!ok) return;
     void accion.ejecutar(async () => {
       await api.post(`/pedidos/${p.id}/entregar`);
       await listado.recargar();
@@ -87,8 +93,13 @@ export default function Pedidos() {
     });
   };
 
-  const eliminar = (p: Pedido) => {
-    if (!confirm(`¿Eliminar el pedido #${p.id} de ${p.cliente_nombre}?`)) return;
+  const eliminar = async (p: Pedido) => {
+    const ok = await confirmar(`¿Eliminar el pedido #${p.id} de ${p.cliente_nombre}?`, {
+      titulo: 'Eliminar pedido',
+      confirmarTexto: 'Eliminar',
+      peligro: true,
+    });
+    if (!ok) return;
     void accion.ejecutar(async () => {
       await api.del(`/pedidos/${p.id}`);
       setSeleccion(null);

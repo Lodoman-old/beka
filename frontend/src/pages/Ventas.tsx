@@ -4,6 +4,7 @@ import { Plus, Minus, Search, Trash2, Wallet } from 'lucide-react';
 import { api, q } from '../api/client';
 import { ItemVentas, ItemClientes, ItemCatalog, Producto, Venta, Cliente, ValorConfig } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
+import { useConfirmar } from '../components/Confirmar';
 import {
   cacheProductos,
   cacheClientes,
@@ -41,6 +42,7 @@ export default function Ventas() {
 
   const listado = useApi<ItemVentas>(() => api.get(`/ventas${q({ limite: '60' })}`), []);
   const accion = useAccion();
+  const confirmar = useConfirmar();
 
   useEffect(() => {
     const activar = () => setEnLinea(true);
@@ -91,8 +93,12 @@ export default function Ventas() {
     return ok;
   };
 
-  const eliminar = (v: Venta) => {
-    if (!confirm(`¿Eliminar la venta #${v.id}? No es posible si tiene abonos.`)) return;
+  const eliminar = async (v: Venta) => {
+    const ok = await confirmar(
+      `¿Eliminar la venta #${v.id}? No es posible si tiene abonos.`,
+      { titulo: 'Eliminar venta', confirmarTexto: 'Eliminar', peligro: true }
+    );
+    if (!ok) return;
     void accion.ejecutar(async () => {
       await api.del(`/ventas/${v.id}`);
       await listado.recargar();

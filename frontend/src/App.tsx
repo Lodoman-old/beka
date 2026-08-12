@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import Layout from './components/Layout';
 import PantallaBloqueo from './components/PantallaBloqueo';
+import { ConfirmarProvider } from './components/Confirmar';
 import Login from './pages/Login';
 import Portal from './pages/Portal';
 import Dashboard from './pages/Dashboard';
@@ -129,31 +130,33 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/portal" element={<Portal />} />
-      <Route
-        path="*"
-        element={
-          <Protegida>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/clientes" element={<Clientes />} />
-<Route path="/ventas" element={<Ventas />} />
-                <Route path="/ventas/:id" element={<VentaDetalle />} />
-                <Route path="/pedidos" element={<Pedidos />} />
-<Route path="/viajes" element={<Viajes />} />
-                <Route path="/viajes/:id" element={<ViajeDetalle />} />
-                <Route path="/abonos" element={<Abonos />} />
-                <Route path="/catalogo" element={<Catalogo />} />
-                <Route path="/configuracion" element={<Configuracion />} />
-                <Route path="/offline" element={<Offline />} />
-              </Routes>
-            </Layout>
-          </Protegida>
-        }
-      />
-    </Routes>
+    <ConfirmarProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/portal" element={<Portal />} />
+        <Route
+          path="*"
+          element={
+            <Protegida>
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/clientes" element={<Clientes />} />
+                  <Route path="/ventas" element={<Ventas />} />
+                  <Route path="/ventas/:id" element={<VentaDetalle />} />
+                  <Route path="/pedidos" element={<Pedidos />} />
+                  <Route path="/viajes" element={<Viajes />} />
+                  <Route path="/viajes/:id" element={<ViajeDetalle />} />
+                  <Route path="/abonos" element={<Abonos />} />
+                  <Route path="/catalogo" element={<Catalogo />} />
+                  <Route path="/configuracion" element={<Configuracion />} />
+                  <Route path="/offline" element={<Offline />} />
+                </Routes>
+              </Layout>
+            </Protegida>
+          }
+        />
+      </Routes>
+    </ConfirmarProvider>
   );
 }

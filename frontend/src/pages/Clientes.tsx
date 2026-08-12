@@ -3,6 +3,7 @@ import { Plus, Search, Pencil, Trash2, Phone, Globe, Copy, RefreshCw } from 'luc
 import { api, q, obtenerBaseUrl } from '../api/client';
 import { Cliente, ItemClientes } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
+import { useConfirmar } from '../components/Confirmar';
 import {
   Card,
   Modal,
@@ -63,13 +64,16 @@ export default function Clientes() {
   } | null>(null);
 
   const regenerar = useAccion();
+  const confirmar = useConfirmar();
 
   const urlPortal = () => `${obtenerBaseUrl()}/portal`;
 
-  const regenerarPortal = (c: Cliente) => {
-    if (!confirm(`¿Generar nuevas credenciales de portal para ${c.nombre}?\nEsto invalida las anteriores.`)) {
-      return;
-    }
+  const regenerarPortal = async (c: Cliente) => {
+    const ok = await confirmar(
+      `¿Generar nuevas credenciales de portal para ${c.nombre}?\nEsto invalida las anteriores.`,
+      { titulo: 'Nuevas credenciales del portal', confirmarTexto: 'Generar' }
+    );
+    if (!ok) return;
     void regenerar.ejecutar(async () => {
       const r = await api.put<{ usuario_portal: string; pass_plano_portal: string }>(
         `/clientes/${c.id}/credenciales-portal`
@@ -133,8 +137,13 @@ export default function Clientes() {
     });
   };
 
-  const eliminar = (c: Cliente) => {
-    if (!confirm(`¿Desactivar al cliente ${c.nombre}?`)) return;
+  const eliminar = async (c: Cliente) => {
+    const ok = await confirmar(`¿Desactivar al cliente ${c.nombre}?`, {
+      titulo: 'Desactivar cliente',
+      confirmarTexto: 'Desactivar',
+      peligro: true,
+    });
+    if (!ok) return;
     void accion.ejecutar(async () => {
       await api.del(`/clientes/${c.id}`);
       await listado.recargar();

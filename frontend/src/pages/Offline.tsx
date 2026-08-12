@@ -14,6 +14,7 @@ import {
   botonPrimario,
 } from '../components/ui';
 import { fechaHora } from '../lib/format';
+import { useConfirmar } from '../components/Confirmar';
 
 const etiquetasTipo: Record<AccionPendiente['tipo'], string> = {
   CLIENTE: 'Cliente nuevo',
@@ -22,6 +23,7 @@ const etiquetasTipo: Record<AccionPendiente['tipo'], string> = {
 };
 
 export default function Offline() {
+  const confirmar = useConfirmar();
   const [enLinea, setEnLinea] = useState(navigator.onLine);
   const [cola, setCola] = useState<AccionPendiente[]>([]);
   const [sincronizando, setSincronizando] = useState(false);
@@ -161,9 +163,14 @@ export default function Offline() {
                 </div>
                 <button
                   onClick={() => {
-                    if (confirm('¿Eliminar este registro pendiente? No se enviará al servidor.')) {
-                      quitar(a.id);
-                    }
+                    void confirmar(
+                      '¿Eliminar este registro pendiente?\nNo se enviará al servidor.',
+                      {
+                        titulo: 'Eliminar registro pendiente',
+                        confirmarTexto: 'Eliminar',
+                        peligro: true,
+                      }
+                    ).then((ok) => ok && quitar(a.id));
                   }}
                   className="p-2 text-slate-400 hover:text-red-500 shrink-0"
                   title="Eliminar registro pendiente"

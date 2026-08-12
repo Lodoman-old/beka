@@ -11,6 +11,7 @@ import {
 import { api } from '../api/client';
 import { Viaje } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
+import { useConfirmar } from '../components/Confirmar';
 import {
   Card,
   Modal,
@@ -33,6 +34,7 @@ export default function ViajeDetalle() {
 
   const viaje = useApi<Viaje>(() => api.get(`/viajes/${viajeId}`), [viajeId]);
   const accion = useAccion();
+  const confirmar = useConfirmar();
   const [filtro, setFiltro] = useState('');
   const [abrirNuevo, setAbrirNuevo] = useState(false);
   const [abonoDe, setAbonoDe] = useState<{ pasajeroId: number | null; nombre: string } | null>(null);
@@ -65,8 +67,13 @@ export default function ViajeDetalle() {
     });
   };
 
-  const quitarPasajero = (pasajeroId: number, nombre: string) => {
-    if (!confirm(`¿Quitar a ${nombre} del viaje?`)) return;
+  const quitarPasajero = async (pasajeroId: number, nombre: string) => {
+    const ok = await confirmar(`¿Quitar a ${nombre} del viaje?`, {
+      titulo: 'Quitar pasajero',
+      confirmarTexto: 'Quitar',
+      peligro: true,
+    });
+    if (!ok) return;
     void accion.ejecutar(async () => {
       await api.del(`/viajes/pasajeros/${pasajeroId}`);
       await viaje.recargar();
