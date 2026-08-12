@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { Search, ScanLine, X, RefreshCw, Package, Plus } from 'lucide-react';
+import { Search, ScanLine, X, RefreshCw, Package, Plus, Camera, FolderOpen } from 'lucide-react';
 import { api, q } from '../api/client';
 import { Producto, ItemCatalog } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
@@ -335,7 +335,26 @@ export default function Catalogo() {
                 (subiendoNuevo ? ' opacity-50 pointer-events-none' : '')
               }
             >
-              {subiendoNuevo ? 'Comprimiendo y subiendo…' : 'Subir imagen del archivo'}
+              <Camera size={16} /> Tomar foto
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  void manejarArchivoNuevo(e.target.files?.[0]);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+            <label
+              className={
+                botonSecundario +
+                ' cursor-pointer !py-2 text-sm' +
+                (subiendoNuevo ? ' opacity-50 pointer-events-none' : '')
+              }
+            >
+              <FolderOpen size={16} /> Subir del archivo
               <input
                 type="file"
                 accept="image/png,image/jpeg,image/webp,image/gif"
@@ -456,7 +475,26 @@ function FormProducto({
             (subiendo ? ' opacity-50 pointer-events-none' : '')
           }
         >
-          {subiendo ? 'Comprimiendo y subiendo…' : 'Subir imagen del archivo'}
+          <Camera size={16} /> Tomar foto
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              void manejarArchivo(e.target.files?.[0]);
+              e.target.value = '';
+            }}
+          />
+        </label>
+        <label
+          className={
+            botonSecundario +
+            ' cursor-pointer !py-2 text-sm' +
+            (subiendo ? ' opacity-50 pointer-events-none' : '')
+          }
+        >
+          <FolderOpen size={16} /> Subir del archivo
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif"
@@ -476,6 +514,7 @@ function FormProducto({
           />
         )}
       </div>
+      {subiendo && <p className="text-xs text-marca-600 mb-3">Comprimiendo y subiendo…</p>}
       {errorSubir && (
         <div className="mb-3">
           <Alerta tipo="error" mensaje={errorSubir} />
