@@ -153,22 +153,6 @@ function hayCandadoActivo(): boolean {
   return false;
 }
 
-function reubicarSesion(): void {
-  const dir = env.WHATSAPP_SESION_DIR;
-  const origen = path.join(dir, 'session');
-  try {
-    if (!fs.existsSync(origen)) return;
-    const destino = path.join(dir, `session-respaldo-${Date.now()}`);
-    fs.renameSync(origen, destino);
-    console.log(
-      '[whatsapp] demasiados fallos de candado: la sesion se movio a ' + destino +
-      ' y se reiniciara desde cero (necesitara escanear el QR)'
-    );
-  } catch (e) {
-    console.error('[whatsapp] no pude mover la sesion:', (e as Error).message);
-  }
-}
-
 function programarReintento(): void {
   if (reintentoTimer) clearTimeout(reintentoTimer);
   reintentoTimer = setTimeout(() => {
@@ -347,13 +331,9 @@ export function inicializarWhatsApp(): void {
   if (hayCandadoActivo()) {
     fallosCandado += 1;
     console.log(
-      `[whatsapp] el candado del perfil sigue activo (#${fallosCandado}); espero a que se libere sin tocar la sesion...`
+      `[whatsapp] el perfil esta bloqueado por OTRA instancia en ejecucion (#${fallosCandado}); ` +
+      'la sesion NO se toca: espero a que la libere (si es un contenedor viejo de un deploy, detenlo)'
     );
-    if (fallosCandado >= 20) {
-      fallosCandado = 0;
-      console.log('[whatsapp] candado persistente por mas de 20 minutos: reubicando la sesion');
-      reubicarSesion();
-    }
     programarReintento();
     return;
   }
@@ -432,14 +412,12 @@ cliente.on('auth_failure', (mensaje) => {
       console.error('[whatsapp]', errorInicializacion);
       if (/process_singleton|in use by another Chromium/i.test(errorInicializacion)) {
         fallosCandado += 1;
-        console.log(`[whatsapp] fallo de candado #${fallosCandado}`);
+        console.log(
+          `[whatsapp] perfil bloqueado por otra instancia (#${fallosCandado}): ` +
+          'no se toca la sesion; se reintenta en 60s hasta que la otra instancia la libere'
+        );
         matarProcesosChromium();
         limpiarCandadoPerfil();
-        if (fallosCandado >= 20) {
-          fallosCandado = 0;
-          console.log('[whatsapp] candado persistente por mas de 20 minutos: reubicando la sesion');
-          reubicarSesion();
-        }
       } else {
         fallosCandado = 0;
       }
