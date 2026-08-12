@@ -94,6 +94,37 @@ function limpiarCandadoPerfil(): void {
   ultimaLimpieza = { dir, ...reporte };
 }
 
+function matarProcesosChromium(): number {
+  const perfil = env.WHATSAPP_SESION_DIR;
+  let muertos = 0;
+  try {
+    if (!fs.existsSync('/proc')) return 0;
+    const pids = fs.readdirSync('/proc').filter((p) => /^\d+$/.test(p));
+    for (const pid of pids) {
+      try {
+        const cmdline = fs
+          .readFileSync(path.join('/proc', pid, 'cmdline'), 'utf8')
+          .replace(/\0/g, ' ');
+        if (!/chrome|chromium/i.test(cmdline)) continue;
+        if (!cmdline.includes(perfil)) continue;
+        try {
+          process.kill(Number(pid), 'SIGKILL');
+          muertos += 1;
+          console.log('[whatsapp] proceso Chromium huerfano terminado: pid', pid);
+        } catch {
+          // ya estaba muerto o sin permisos
+        }
+      } catch {
+        // el pid ya no existe
+      }
+    }
+  } catch (e) {
+    console.error('[whatsapp] no pude revisar procesos Chromium:', (e as Error).message);
+  }
+  if (muertos > 0) console.log(`[whatsapp] ${muertos} procesos Chromium terminados`);
+  return muertos;
+}
+
 function reubicarSesion(): void {
   const dir = env.WHATSAPP_SESION_DIR;
   const origen = path.join(dir, 'session');
@@ -229,6 +260,8 @@ export function inicializarWhatsApp(): void {
   mensajeInicializado = true;
 
   limpiarCandadoPerfil();
+  matarProcesosChromium();
+  limpiarCandadoPerfil();
 
   try {
     cliente = new Client({
@@ -295,6 +328,8 @@ export function inicializarWhatsApp(): void {
       if (/process_singleton|in use by another Chromium/i.test(errorInicializacion)) {
         fallosCandado += 1;
         console.log(`[whatsapp] fallo de candado #${fallosCandado}`);
+        matarProcesosChromium();
+        limpiarCandadoPerfil();
         if (fallosCandado >= 5) {
           fallosCandado = 0;
           reubicarSesion();
