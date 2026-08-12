@@ -31,11 +31,72 @@ let reintentos: ReturnType<typeof setInterval> | null = null;
 let reintentoTimer: ReturnType<typeof setTimeout> | null = null;
 let apagando = false;
 
-const PERFIL_TMP = '/tmp/beka-perfil';
+const TRABAJO = '/tmp/beka-auth';
+
+function copiarSesion(origen: string, destino: string): void {
+  const carpetaCache = new Set([
+    'Cache',
+    'Code Cache',
+    'GPUCache',
+    'Dictionaries',
+    'CacheStorage',
+    'Cache_Data',
+  ]);
+  try {
+    if (!fs.existsSync(origen)) return;
+    fs.mkdirSync(destino, { recursive: true });
+    for (const entrada of fs.readdirSync(origen)) {
+      if (entrada.startsWith('Singleton') || entrada.startsWith('Crashpad')) continue;
+      const rutaO = path.join(origen, entrada);
+      const rutaD = path.join(destino, entrada);
+      let esDir = false;
+      try {
+        esDir = fs.statSync(rutaO).isDirectory();
+      } catch {
+        continue;
+      }
+      if (esDir && entrada === 'Default') {
+        fs.mkdirSync(rutaD, { recursive: true });
+        for (const sub of fs.readdirSync(rutaO)) {
+          if (carpetaCache.has(sub)) continue;
+          const rs = path.join(rutaO, sub);
+          try {
+            fs.cpSync(rs, path.join(rutaD, sub), { recursive: true });
+          } catch {
+            // archivo ocupado; se salta
+          }
+        }
+      } else if (esDir) {
+        try {
+          fs.cpSync(rutaO, rutaD, { recursive: true });
+        } catch {
+          // archivo ocupado; se salta
+        }
+      } else {
+        try {
+          fs.copyFileSync(rutaO, rutaD);
+        } catch {
+          // archivo ocupado; se salta
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[whatsapp] no pude copiar la sesion:', (e as Error).message);
+  }
+}
+
+function sincronizarSesionSiHay(): void {
+  const sesionTmp = path.join(TRABAJO, 'session');
+  if (!fs.existsSync(sesionTmp)) return;
+  if (!fs.existsSync(path.join(sesionTmp, 'Default'))) return;
+  const destino = path.join(env.WHATSAPP_SESION_DIR, 'session');
+  copiarSesion(sesionTmp, destino);
+  console.log('[whatsapp] sesion sincronizada al volumen');
+}
 
 function limpiarCandadoPerfil(): void {
   const dir = env.WHATSAPP_SESION_DIR;
-  const raices = [dir, path.dirname(dir), '/app/.wwebjs_auth', PERFIL_TMP];
+  const raices = [dir, path.dirname(dir), '/app/.wwebjs_auth', TRABAJO];
   const reporte: {
     borrados: number;
     sesionExiste: boolean;
@@ -98,7 +159,7 @@ function limpiarCandadoPerfil(): void {
 }
 
 function limpiarCachePerfil(): void {
-  const dir = path.join(PERFIL_TMP, 'Default');
+  const dir = path.join(TRABAJO, 'session', 'Default');
   const carpetas = ['Cache', 'Code Cache', 'GPUCache', 'Dictionaries', 'CacheStorage', 'Service Worker/CacheStorage'];
   try {
     if (!fs.existsSync(dir)) return;
@@ -128,7 +189,7 @@ function matarProcesosChromium(): number {
           .readFileSync(path.join('/proc', pid, 'cmdline'), 'utf8')
           .replace(/\0/g, ' ');
         if (!/chrome|chromium/i.test(cmdline)) continue;
-        if (!cmdline.includes(perfil) && !cmdline.includes(PERFIL_TMP)) continue;
+        if (!cmdline.includes(perfil) && !cmdline.includes(TRABAJO)) continue;
         try {
           process.kill(Number(pid), 'SIGKILL');
           muertos += 1;
@@ -183,6 +244,7 @@ function programarReintento(): void {
 }
 
 async function destruirYReiniciar(origen: string): Promise<void> {
+  sincronizarSesionSiHay();
   if (cliente) {
     const actual = cliente;
     cliente = null;
@@ -347,8 +409,11 @@ export function inicializarWhatsApp(): void {
   limpiarCachePerfil();
 
   try {
-    fs.rmSync(PERFIL_TMP, { recursive: true, force: true });
-    fs.mkdirSync(PERFIL_TMP, { recursive: true });
+    fs.rmSync(TRABAJO, { recursive: true, force: true });
+    fs.mkdirSync(TRABAJO, { recursive: true });
+    copiarSesion(path.join(env.WHATSAPP_SESION_DIR, 'session'), path.join(TRABAJO, 'session'));
+    const hayEnTmp = fs.existsSync(path.join(TRABAJO, 'session', 'Default'));
+    console.log(`[whatsapp] perfil de trabajo en /tmp listo (sesion copiada: ${hayEnTmp ? 'SI' : 'NO'})`);
   } catch (e) {
     console.error('[whatsapp] no pude preparar el perfil temporal:', (e as Error).message);
   }
@@ -369,8 +434,8 @@ export function inicializarWhatsApp(): void {
 
   try {
     cliente = new Client({
-      authStrategy: new LocalAuth({
-        dataPath: env.WHATSAPP_SESION_DIR,
+authStrategy: new LocalAuth({
+        dataPath: TRABAJO,
       }),
       webVersion: '2.3000.1041220451-alpha',
       webVersionCache: {
@@ -379,7 +444,6 @@ export function inicializarWhatsApp(): void {
       },
       puppeteer: {
         headless: true,
-        userDataDir: PERFIL_TMP,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         executablePath: env.CHROME_EXECUTABLE,
         protocolTimeout: 300000,
@@ -411,6 +475,7 @@ cliente.on('ready', () => {
       errorInicializacion = null;
       fallosCandado = 0;
       console.log('[whatsapp] Sesion conectada correctamente');
+      sincronizarSesionSiHay();
       void aplicarParcheLid().then(() => {
         iniciarColaDeReintentos();
       });
@@ -686,6 +751,7 @@ export function reiniciarWhatsApp(): void {
 
 export function detenerWhatsApp(): void {
   apagando = true;
+  sincronizarSesionSiHay();
   if (reintentos) clearInterval(reintentos);
   if (reintentoTimer) {
     clearTimeout(reintentoTimer);
