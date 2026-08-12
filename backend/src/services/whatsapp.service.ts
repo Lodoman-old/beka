@@ -29,6 +29,7 @@ let fallosCandado = 0;
 let errorInicializacion: string | null = null;
 let reintentos: ReturnType<typeof setInterval> | null = null;
 let reintentoTimer: ReturnType<typeof setTimeout> | null = null;
+let apagando = false;
 
 function limpiarCandadoPerfil(): void {
   const dir = env.WHATSAPP_SESION_DIR;
@@ -351,16 +352,25 @@ export function inicializarWhatsApp(): void {
       });
     });
 
-    cliente.on('auth_failure', (mensaje) => {
+cliente.on('auth_failure', (mensaje) => {
       sesionConectada = false;
       errorInicializacion = 'Fallo de autenticacion: ' + mensaje;
       console.error('[whatsapp]', errorInicializacion);
+      if (!apagando) {
+        console.log('[whatsapp] reprogramando reconexion: la sesion se generara de nuevo en el QR');
+        programarReintento();
+      }
     });
 
     cliente.on('disconnected', (razon) => {
       sesionConectada = false;
+      qrPendiente = false;
       errorInicializacion = 'Sesion desconectada: ' + razon;
       console.error('[whatsapp]', errorInicializacion);
+      if (!apagando) {
+        console.log('[whatsapp] reconexion automatica programada en 60s...');
+        programarReintento();
+      }
     });
 
     void cliente.initialize().catch((e) => {
@@ -597,7 +607,28 @@ async function construirMensajePendiente(abono: FilaAbono): Promise<string> {
   ].join('\n');
 }
 
+export function reiniciarWhatsApp(): void {
+  if (!env.WHATSAPP_ENABLED) return;
+  apagando = false;
+  if (reintentoTimer) {
+    clearTimeout(reintentoTimer);
+    reintentoTimer = null;
+  }
+  if (cliente) {
+    void cliente.destroy().catch(() => undefined);
+    cliente = null;
+  }
+  sesionConectada = false;
+  qrPendiente = false;
+  errorInicializacion = null;
+  mensajeInicializado = false;
+  fallosCandado = 0;
+  console.log('[whatsapp] reinicio forzado por el usuario');
+  inicializarWhatsApp();
+}
+
 export function detenerWhatsApp(): void {
+  apagando = true;
   if (reintentos) clearInterval(reintentos);
   if (reintentoTimer) {
     clearTimeout(reintentoTimer);

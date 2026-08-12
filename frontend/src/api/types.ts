@@ -149,6 +149,53 @@ export interface ItemVentas {
   filas: Venta[];
 }
 
+export interface Pedido {
+  id: number;
+  cliente_id: number;
+  cliente_nombre: string;
+  cliente_telefono: string | null;
+  estado: 'PENDIENTE' | 'ENTREGADO' | 'CONVERTIDO';
+  venta_id: number | null;
+  notas: string | null;
+  fecha: string;
+  articulos_count?: number;
+  total_pedido?: number;
+  detalles?: PedidoDetalle[];
+}
+
+export interface PedidoDetalle {
+  id: number;
+  pedido_id: number;
+  producto_id: number;
+  cantidad: number;
+  precio_unitario: number;
+  precio_costo_unitario: number;
+  sku: string;
+  producto_nombre: string;
+  imagen: string | null;
+  precio_hoy: number;
+}
+
+export interface ItemPedidos {
+  total: number;
+  filas: Pedido[];
+}
+
+export interface Devolucion {
+  id: number;
+  venta_id: number;
+  tipo: 'REEMBOLSO' | 'CAMBIO';
+  motivo: string | null;
+  reembolso_dinero: number;
+  registrado_por: string;
+  created_at: string;
+}
+
+export interface ResultadoDevolucion {
+  devolucion: Devolucion;
+  venta: Venta;
+}
+
 export interface ItemViajes {
   total: number;
   filas: Viaje[];

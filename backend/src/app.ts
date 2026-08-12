@@ -18,6 +18,7 @@ import configRouter, { manejarQrWhatsApp, manejarLogoGet, manejarLogoUrl } from 
 import comprobantesRouter from './routes/comprobantes.routes';
 import authRouter from './routes/auth.routes';
 import portalRouter from './routes/portal.routes';
+import pedidosRouter from './routes/pedidos.routes';
 import { necesitaAuth, necesitaRol, ROL_ADMIN } from './services/auth.service';
 import { envolver } from './utils/http';
 import { rutaArchivoImagen } from './services/imagenes.service';
@@ -67,6 +68,7 @@ export function crearApp(): Application {
   api.use(necesitaAuth, necesitaRol(ROL_ADMIN));
   api.use('/clientes', clientesRouter);
   api.use('/ventas', ventasRouter);
+  api.use('/pedidos', pedidosRouter);
   api.use('/viajes', viajesRouter);
   api.use('/abonos', abonosRouter);
   api.use('/catalogo', catalogoRouter);

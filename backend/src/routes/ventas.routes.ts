@@ -59,6 +59,35 @@ router.post(
   })
 );
 
+router.post(
+  '/:id/devolucion',
+  envolver(async (req, res) => {
+    const devueltos = Array.isArray(req.body?.devueltos)
+      ? req.body.devueltos.map(
+          (item: { venta_detalle_id?: unknown; cantidad?: unknown }) => ({
+            venta_detalle_id: enteroPositivo(item?.venta_detalle_id, 'venta_detalle_id'),
+            cantidad: enteroPositivo(item?.cantidad, 'cantidad'),
+          })
+        )
+      : [];
+    const entregados = Array.isArray(req.body?.entregados)
+      ? req.body.entregados.map(
+          (item: { producto_id?: unknown; cantidad?: unknown }) => ({
+            producto_id: enteroPositivo(item?.producto_id, 'producto_id'),
+            cantidad: enteroPositivo(item?.cantidad, 'cantidad'),
+          })
+        )
+      : [];
+    const resultado = await ventas.devolverArticulos(
+      Number(req.params.id),
+      devueltos,
+      entregados,
+      opcionalTexto(req.body?.motivo)
+    );
+    res.json(resultado);
+  })
+);
+
 router.delete(
   '/:id',
   envolver(async (req, res) => {

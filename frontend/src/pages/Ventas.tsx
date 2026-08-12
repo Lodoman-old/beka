@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, Minus, Search, Trash2, Wallet, FileText } from 'lucide-react';
-import { api, q, descargarComprobante } from '../api/client';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus, Minus, Search, Trash2, Wallet } from 'lucide-react';
+import { api, q } from '../api/client';
 import { ItemVentas, ItemClientes, ItemCatalog, Producto, Venta, Cliente, ValorConfig } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
 import {
@@ -35,9 +35,9 @@ export default function Ventas() {
     abierto: false,
     clienteId: null,
   });
-  const [seleccion, setSeleccion] = useState<Venta | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [enLinea, setEnLinea] = useState(navigator.onLine);
+  const navigate = useNavigate();
 
   const listado = useApi<ItemVentas>(() => api.get(`/ventas${q({ limite: '60' })}`), []);
   const accion = useAccion();
@@ -59,10 +59,6 @@ export default function Ventas() {
   };
 
   const abrirNueva = () => setNueva({ abierto: true, clienteId: null });
-  const verDetalle = (v: Venta) => {
-    setSeleccion(v);
-    void api.get<Venta>(`/ventas/${v.id}`).then((completa) => setSeleccion(completa));
-  };
 
   const crear = async (
     clienteId: number | null,
@@ -151,7 +147,7 @@ export default function Ventas() {
                     <tr
                       key={v.id}
                       className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer"
-                      onClick={() => verDetalle(v)}
+                      onClick={() => navigate(`/ventas/${v.id}`)}
                     >
                       <td className="px-5 py-3 font-semibold text-slate-700">#{v.id}</td>
                       <td className="px-3 py-3">{v.cliente_nombre}</td>
@@ -196,12 +192,20 @@ export default function Ventas() {
                     <p className="text-sm text-slate-500">Saldo</p>
                     <p className="font-bold text-red-500">{moneda(v.saldo_pendiente)}</p>
                   </div>
-                  <Link
-                    to={`/abonos?venta=${v.id}`}
-                    className={botonPrimario + ' !py-2'}
-                  >
-                    <Wallet size={16} /> Abonar
-                  </Link>
+                  <div className="flex gap-2">
+                    <Link
+                      to={`/ventas/${v.id}`}
+                      className={botonSecundario + ' !py-2 text-sm'}
+                    >
+                      Ver
+                    </Link>
+                    <Link
+                      to={`/abonos?venta=${v.id}`}
+                      className={botonPrimario + ' !py-2'}
+                    >
+                      <Wallet size={16} /> Abonar
+                    </Link>
+                  </div>
                 </div>
               </Card>
             ))}
@@ -214,48 +218,6 @@ export default function Ventas() {
           onCerrar={() => setNueva({ abierto: false, clienteId: null })}
           onCrear={crear}
         />
-      )}
-
-      {seleccion && (
-        <Modal
-          abierto={!!seleccion}
-          onCerrar={() => setSeleccion(null)}
-          titulo={`Venta #${seleccion.id} · ${seleccion.cliente_nombre}`}
-        >
-          <div className="space-y-2 mb-4">
-            {seleccion.detalles?.map((d) => (
-              <div key={d.id} className="flex items-center justify-between text-sm border-b border-slate-50 pb-2">
-                <div>
-                  <p className="font-medium text-slate-700">{d.producto_nombre}</p>
-                  <p className="text-xs text-slate-400">SKU {d.sku} × {d.cantidad}</p>
-                </div>
-                <span className="font-semibold">{moneda(d.precio_unitario * d.cantidad)}</span>
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-between text-sm mb-1">
-            <span className="text-slate-500">Total</span>
-            <span className="font-bold">{moneda(seleccion.total)}</span>
-          </div>
-          <div className="flex justify-between text-sm mb-4">
-            <span className="text-slate-500">Saldo pendiente</span>
-            <span className="font-bold text-red-500">{moneda(seleccion.saldo_pendiente)}</span>
-          </div>
-          <Link to={`/abonos?venta=${seleccion.id}`} className={botonPrimario + ' w-full'}>
-            <Wallet size={18} /> Registrar abono
-          </Link>
-          <button
-            onClick={() =>
-              void descargarComprobante(
-                `/comprobantes/venta/${seleccion.id}`,
-                `venta-${seleccion.id}.pdf`
-              ).catch(() => undefined)
-            }
-            className={botonSecundario + ' w-full'}
-          >
-            <FileText size={18} /> Recibo PDF
-          </button>
-        </Modal>
       )}
     </div>
   );

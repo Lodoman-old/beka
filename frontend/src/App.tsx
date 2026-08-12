@@ -8,6 +8,8 @@ import Portal from './pages/Portal';
 import Dashboard from './pages/Dashboard';
 import Clientes from './pages/Clientes';
 import Ventas from './pages/Ventas';
+import VentaDetalle from './pages/VentaDetalle';
+import Pedidos from './pages/Pedidos';
 import Viajes from './pages/Viajes';
 import ViajeDetalle from './pages/ViajeDetalle';
 import Abonos from './pages/Abonos';
@@ -138,8 +140,10 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/clientes" element={<Clientes />} />
-                <Route path="/ventas" element={<Ventas />} />
-                <Route path="/viajes" element={<Viajes />} />
+<Route path="/ventas" element={<Ventas />} />
+                <Route path="/ventas/:id" element={<VentaDetalle />} />
+                <Route path="/pedidos" element={<Pedidos />} />
+<Route path="/viajes" element={<Viajes />} />
                 <Route path="/viajes/:id" element={<ViajeDetalle />} />
                 <Route path="/abonos" element={<Abonos />} />
                 <Route path="/catalogo" element={<Catalogo />} />

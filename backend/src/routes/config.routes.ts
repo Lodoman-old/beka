@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import * as sistema from '../services/sistema.service';
 import { subirLogo } from '../services/imagenes.service';
-import { estadoWhatsApp } from '../services/whatsapp.service';
+import { estadoWhatsApp, reiniciarWhatsApp } from '../services/whatsapp.service';
 import { envolver, stringObligatorio } from '../utils/http';
 import { env } from '../config/env';
 
@@ -90,6 +90,14 @@ router.put(
 router.get(
   '/whatsapp',
   envolver(async (_req, res) => {
+    res.json(estadoWhatsApp());
+  })
+);
+
+router.post(
+  '/whatsapp/reiniciar',
+  envolver(async (_req, res) => {
+    reiniciarWhatsApp();
     res.json(estadoWhatsApp());
   })
 );

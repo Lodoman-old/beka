@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import {
   Percent,
@@ -144,6 +144,21 @@ export default function Configuracion() {
     INICIANDO: 'Iniciando…',
     DESACTIVADO: 'Desactivado',
   };
+
+  useEffect(() => {
+    const refresco = setInterval(() => void whatsapp.recargar(), 15000);
+    return () => clearInterval(refresco);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const revincular = () => {
+    void accion.ejecutar(async () => {
+      await api.post('/config/whatsapp/reiniciar');
+      await whatsapp.recargar();
+    });
+  };
+
+  const whatsappConectado = estado === 'CONECTADO';
 
   const guardarMargen = (e: FormEvent) => {
     e.preventDefault();
@@ -555,8 +570,18 @@ export default function Configuracion() {
         </div>
         <p className="text-sm text-slate-500">
           Cada abono y cada venta envían al cliente su comprobante en texto y su recibo en PDF.
-          La primera conexión requiere escanear el QR en la terminal del VPS.
+          Si la sesión se pierde, el sistema intenta reconectarse solo; si hace falta, vuelve a
+          generar el QR para escanear.
         </p>
+        {!whatsappConectado && estado !== 'INICIANDO' && (
+          <button
+            onClick={revincular}
+            disabled={accion.ocupado}
+            className={botonSecundario + ' mt-3 !py-2 text-sm'}
+          >
+            <RefreshCw size={15} /> {accion.ocupado ? 'Reconectando…' : 'Re-vincular WhatsApp'}
+          </button>
+        )}
         {whatsapp.datos?.qr_pendiente && (
           <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-700 flex items-start gap-2">
             <Clock size={16} className="mt-0.5 shrink-0" />

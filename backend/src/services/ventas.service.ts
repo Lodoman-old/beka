@@ -156,6 +156,138 @@ export interface DetalleVenta {
   imagen: string | null;
 }
 
+export interface ItemDevolucion {
+  venta_detalle_id: number;
+  cantidad: number;
+}
+
+export interface ItemEntrega {
+  producto_id: number;
+  cantidad: number;
+}
+
+export interface ResultadoDevolucion {
+  devolucion: Record<string, unknown>;
+  venta: (FilaVenta & { detalles: DetalleVenta[] }) | null;
+}
+
+export async function devolverArticulos(
+  ventaId: number,
+  devueltos: ItemDevolucion[],
+  entregados: ItemEntrega[] = [],
+  motivo?: string | null
+): Promise<ResultadoDevolucion> {
+  if (!devueltos || devueltos.length === 0) {
+    throw new AppError(400, 'Indica al menos un producto a devolver');
+  }
+  const existe = await pool.query('SELECT id FROM ventas WHERE id = $1', [ventaId]);
+  if (!existe.rowCount) throw new AppError(404, 'Venta no encontrada');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: detalles } = await client.query(
+      `SELECT id, producto_id, cantidad, precio_unitario FROM venta_detalles WHERE venta_id = $1`,
+      [ventaId]
+    );
+    const porId = new Map(detalles.map((d) => [d.id, d]));
+
+    const devoluciones: { detalle: (typeof detalles)[0]; cantidad: number }[] = [];
+    for (const item of devueltos) {
+      const detalle = porId.get(item.venta_detalle_id);
+      if (!detalle) {
+        throw new AppError(400, `El detalle ${item.venta_detalle_id} no pertenece a esta venta`);
+      }
+      if (!Number.isInteger(item.cantidad) || item.cantidad <= 0 || item.cantidad > detalle.cantidad) {
+        throw new AppError(
+          400,
+          `La cantidad a devolver del detalle ${item.venta_detalle_id} excede lo vendido`
+        );
+      }
+      devoluciones.push({ detalle, cantidad: item.cantidad });
+    }
+
+    const entregas: { producto: Partial<FilaProducto>; cantidad: number }[] = [];
+    for (const item of entregados ?? []) {
+      if (!Number.isInteger(item.cantidad) || item.cantidad <= 0) {
+        throw new AppError(400, 'La cantidad del reemplazo debe ser un entero positivo');
+      }
+      const producto = (
+        await client.query(
+          `SELECT id, precio_publico, precio_costo, activo FROM catalogo_productos WHERE id = $1`,
+          [item.producto_id]
+        )
+      ).rows[0] as Partial<FilaProducto> | undefined;
+      if (!producto || !producto.activo) {
+        throw new AppError(404, `Producto con id ${item.producto_id} no encontrado o inactivo`);
+      }
+      entregas.push({ producto, cantidad: item.cantidad });
+    }
+
+    const tipo = entregas.length ? 'CAMBIO' : 'REEMBOLSO';
+    const devolucion = (
+      await client.query(
+        `INSERT INTO devoluciones (venta_id, tipo, motivo, registrado_por)
+         VALUES ($1, $2, $3, 'WEB') RETURNING *`,
+        [ventaId, tipo, motivo || null]
+      )
+    ).rows[0];
+
+    for (const { detalle, cantidad } of devoluciones) {
+      await client.query(
+        `INSERT INTO devolucion_detalles (devolucion_id, producto_id, cantidad, precio_unitario, tipo)
+         VALUES ($1, $2, $3, $4, 'DEVUELTO')`,
+        [devolucion.id, detalle.producto_id, cantidad, detalle.precio_unitario]
+      );
+      if (cantidad >= detalle.cantidad) {
+        await client.query('DELETE FROM venta_detalles WHERE id = $1', [detalle.id]);
+      } else {
+        await client.query(
+          'UPDATE venta_detalles SET cantidad = $1 WHERE id = $2',
+          [detalle.cantidad - cantidad, detalle.id]
+        );
+      }
+    }
+
+    for (const { producto, cantidad } of entregas) {
+      await client.query(
+        `INSERT INTO venta_detalles (venta_id, producto_id, cantidad, precio_unitario, precio_costo_unitario)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (venta_id, producto_id)
+         DO UPDATE SET cantidad = venta_detalles.cantidad + EXCLUDED.cantidad`,
+        [ventaId, producto.id, cantidad, producto.precio_publico, producto.precio_costo]
+      );
+      await client.query(
+        `INSERT INTO devolucion_detalles (devolucion_id, producto_id, cantidad, precio_unitario, tipo)
+         VALUES ($1, $2, $3, $4, 'ENTREGADO')`,
+        [devolucion.id, producto.id, cantidad, producto.precio_publico]
+      );
+    }
+
+    const actualizada = (
+      await client.query(
+        `SELECT v.total, (SELECT COALESCE(SUM(a.monto), 0) FROM abonos a WHERE a.venta_id = v.id) AS abonado
+           FROM ventas v WHERE v.id = $1`,
+        [ventaId]
+      )
+    ).rows[0];
+    const reembolso = Math.max(0, Number(actualizada.abonado) - Number(actualizada.total));
+    const reembolsoRedondeado = Math.round(reembolso * 100) / 100;
+    await client.query('UPDATE devoluciones SET reembolso_dinero = $1 WHERE id = $2', [
+      reembolsoRedondeado,
+      devolucion.id,
+    ]);
+
+    await client.query('COMMIT');
+    return { devolucion: { ...devolucion, reembolso_dinero: reembolsoRedondeado }, venta: await obtenerVenta(ventaId) };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function eliminarVenta(id: number): Promise<void> {
   const existe = await pool.query('SELECT id FROM ventas WHERE id = $1', [id]);
   if (!existe.rowCount) throw new AppError(404, 'Venta no encontrada');
