@@ -297,8 +297,7 @@ function ModalDevolucion({
     0
   );
   const baseNueva = baseRestante + baseEntregas;
-  const recargoNuevo = (baseNueva * recargoPct) / 100;
-  const nuevoTotal = baseNueva + recargoNuevo;
+  const nuevoTotal = baseNueva;
   const reembolso = Math.max(0, abonado - nuevoTotal);
   const saldoNuevo = Math.max(0, nuevoTotal - abonado);
   const algoDevuelto = devoluciones.some((f) => f.cantidad > 0);
@@ -472,7 +471,7 @@ function ModalDevolucion({
         />
       </Campo>
 
-      <div className="rounded-xl bg-slate-50 p-4 mb-4 space-y-1.5 text-sm">
+<div className="rounded-xl bg-slate-50 p-4 mb-4 space-y-1.5 text-sm">
         <div className="flex justify-between text-slate-500">
           <span>Valor devuelto</span>
           <span className="text-red-600 font-medium">− {moneda(valorDevuelto)}</span>
@@ -484,10 +483,9 @@ function ModalDevolucion({
           </div>
         )}
         {recargoPct > 0 && (
-          <div className="flex justify-between text-slate-500">
-            <span>Recargo {recargoPct}%</span>
-            <span>{moneda(recargoNuevo)}</span>
-          </div>
+          <p className="text-[11px] text-amber-600">
+            Sin recargo en la devolución: el porcentaje ({recargoPct}%) deja de aplicarse a esta venta.
+          </p>
         )}
         <div className="flex justify-between font-bold text-slate-800">
           <span>Nuevo total de la venta</span>

@@ -29,6 +29,7 @@ export default function Catalogo() {
   const [nuevo, setNuevo] = useState(false);
   const [formNuevo, setFormNuevo] = useState({ sku: '', nombre: '', precio_costo: '', imagen: '' });
   const [subiendoNuevo, setSubiendoNuevo] = useState(false);
+  const [imagenZoom, setImagenZoom] = useState<Producto | null>(null);
 
   const manejarArchivoNuevo = async (archivo: File | undefined) => {
     if (!archivo) return;
@@ -187,36 +188,74 @@ export default function Catalogo() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
           {listado.datos.filas.map((p) => (
-            <Card key={p.id} className="p-3 hover:shadow-md transition cursor-pointer" >
-              <button className="block w-full text-left" onClick={() => setEditar(p)}>
-                <div className="w-full h-24 rounded-xl bg-slate-100 overflow-hidden mb-2">
-                  {p.imagen ? (
-                    <img
-                      src={p.imagen}
-                      referrerPolicy="no-referrer"
-                      alt={p.nombre}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-300">
-                      <Package size={28} />
-                    </div>
-                  )}
-                </div>
-                <p className="text-[10px] font-semibold text-marca-600 truncate">{p.sku}</p>
-                <p className="text-sm font-medium text-slate-700 line-clamp-2 min-h-[2.5rem]">
-                  {p.nombre}
-                </p>
-                <div className="mt-1.5 flex items-baseline gap-1.5">
-                  <span className="font-bold text-emerald-600">{moneda(p.precio_publico)}</span>
-                  <span className="text-[10px] text-slate-300 line-through">
-                    {moneda(p.precio_costo)}
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400">margen {p.margen_aplicado}%</p>
+            <Card
+              key={p.id}
+              className="p-3 hover:shadow-md transition cursor-pointer"
+              onClick={() => setEditar(p)}
+            >
+              <button
+                type="button"
+                aria-label="Ampliar foto"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setImagenZoom(p);
+                }}
+                className="block w-full h-24 rounded-xl bg-slate-100 overflow-hidden mb-2 cursor-zoom-in"
+              >
+                {p.imagen ? (
+                  <img
+                    src={p.imagen}
+                    referrerPolicy="no-referrer"
+                    alt={p.nombre}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-slate-300">
+                    <Package size={28} />
+                  </div>
+                )}
               </button>
+              <p className="text-[10px] font-semibold text-marca-600 truncate">{p.sku}</p>
+              <p className="text-sm font-medium text-slate-700 line-clamp-2 min-h-[2.5rem]">
+                {p.nombre}
+              </p>
+              <div className="mt-1.5 flex items-baseline gap-1.5">
+                <span className="font-bold text-emerald-600">{moneda(p.precio_publico)}</span>
+                <span className="text-[10px] text-slate-300 line-through">
+                  {moneda(p.precio_costo)}
+                </span>
+              </div>
             </Card>
           ))}
+        </div>
+      )}
+
+      {imagenZoom && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center p-6"
+          onClick={() => setImagenZoom(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setImagenZoom(null)}
+            className="absolute top-4 right-4 p-2.5 rounded-full bg-white/10 text-white hover:bg-white/20"
+            aria-label="Cerrar"
+          >
+            <X size={24} />
+          </button>
+          <img
+            src={imagenZoom.imagen || undefined}
+            referrerPolicy="no-referrer"
+            alt={imagenZoom.nombre}
+            className="max-w-full max-h-[75vh] rounded-2xl object-contain"
+          />
+          <p className="mt-4 text-center text-white">
+            <span className="block font-semibold text-base">{imagenZoom.nombre}</span>
+            <span className="text-sm text-white/70">
+              SKU {imagenZoom.sku} · {moneda(imagenZoom.precio_publico)}
+            </span>
+          </p>
+          <p className="mt-2 text-xs text-white/50">Toque la imagen o la X para cerrar</p>
         </div>
       )}
 

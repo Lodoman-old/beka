@@ -264,6 +264,9 @@ export async function devolverArticulos(
       );
     }
 
+    await client.query('UPDATE ventas SET recargo_pct = 0, recargo_monto = 0 WHERE id = $1', [ventaId]);
+    await client.query('SELECT recalcular_venta($1)', [ventaId]);
+
     const actualizada = (
       await client.query(
         `SELECT v.total, (SELECT COALESCE(SUM(a.monto), 0) FROM abonos a WHERE a.venta_id = v.id) AS abonado

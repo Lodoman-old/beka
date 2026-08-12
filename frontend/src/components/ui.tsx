@@ -5,9 +5,17 @@ export function cn(...clases: (string | false | null | undefined)[]): string {
   return clases.filter(Boolean).join(' ');
 }
 
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className = '',
+  onClick,
+}: {
+  children: ReactNode;
+  className?: string;
+  onClick?: () => void;
+}) {
   return (
-    <div className={cn('bg-white rounded-2xl shadow-sm border border-slate-200', className)}>
+    <div className={'bg-white rounded-2xl border border-slate-200 shadow-sm ' + className} onClick={onClick}>
       {children}
     </div>
   );
