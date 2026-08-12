@@ -31,9 +31,11 @@ let reintentos: ReturnType<typeof setInterval> | null = null;
 let reintentoTimer: ReturnType<typeof setTimeout> | null = null;
 let apagando = false;
 
+const PERFIL_TMP = '/tmp/beka-perfil';
+
 function limpiarCandadoPerfil(): void {
   const dir = env.WHATSAPP_SESION_DIR;
-  const raices = [dir, path.dirname(dir), '/app/.wwebjs_auth'];
+  const raices = [dir, path.dirname(dir), '/app/.wwebjs_auth', PERFIL_TMP];
   const reporte: {
     borrados: number;
     sesionExiste: boolean;
@@ -96,7 +98,7 @@ function limpiarCandadoPerfil(): void {
 }
 
 function limpiarCachePerfil(): void {
-  const dir = path.join(env.WHATSAPP_SESION_DIR, 'session', 'Default');
+  const dir = path.join(PERFIL_TMP, 'Default');
   const carpetas = ['Cache', 'Code Cache', 'GPUCache', 'Dictionaries', 'CacheStorage', 'Service Worker/CacheStorage'];
   try {
     if (!fs.existsSync(dir)) return;
@@ -126,7 +128,7 @@ function matarProcesosChromium(): number {
           .readFileSync(path.join('/proc', pid, 'cmdline'), 'utf8')
           .replace(/\0/g, ' ');
         if (!/chrome|chromium/i.test(cmdline)) continue;
-        if (!cmdline.includes(perfil)) continue;
+        if (!cmdline.includes(perfil) && !cmdline.includes(PERFIL_TMP)) continue;
         try {
           process.kill(Number(pid), 'SIGKILL');
           muertos += 1;
@@ -344,6 +346,13 @@ export function inicializarWhatsApp(): void {
   restaurarSesionRespaldo();
   limpiarCachePerfil();
 
+  try {
+    fs.rmSync(PERFIL_TMP, { recursive: true, force: true });
+    fs.mkdirSync(PERFIL_TMP, { recursive: true });
+  } catch (e) {
+    console.error('[whatsapp] no pude preparar el perfil temporal:', (e as Error).message);
+  }
+
   console.log(
     `[whatsapp] sesion en disco: ${sesionEnDisco() ? 'SI (se reutilizara)' : 'NO (se pedira QR)'}`
   );
@@ -370,6 +379,7 @@ export function inicializarWhatsApp(): void {
       },
       puppeteer: {
         headless: true,
+        userDataDir: PERFIL_TMP,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         executablePath: env.CHROME_EXECUTABLE,
         protocolTimeout: 300000,
