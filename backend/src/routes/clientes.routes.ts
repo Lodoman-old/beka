@@ -20,6 +20,16 @@ router.get(
 );
 
 router.get(
+  '/telefono-existe',
+  envolver(async (req, res) => {
+    const telefono = opcionalTexto(req.query.telefono);
+    const excepto = req.query.excepto ? Number(req.query.excepto) : undefined;
+    const duplicados = await clientes.buscarClientesPorTelefono(telefono, excepto);
+    res.json({ existe: duplicados.length > 0, clientes: duplicados });
+  })
+);
+
+router.get(
   '/:id',
   envolver(async (req, res) => {
     const cliente = await obtenerCliente(Number(req.params.id));
@@ -32,6 +42,7 @@ router.post(
   '/',
   envolver(async (req, res) => {
     const nombre = stringObligatorio(req.body?.nombre, 'nombre');
+    const accion = req.body?.accion === 'cambiar' || req.body?.accion === 'compartir' ? req.body?.accion : undefined;
     const cliente = await clientes.crearCliente({
       nombre,
       telefono: opcionalTexto(req.body?.telefono),
@@ -39,7 +50,7 @@ router.post(
       email: opcionalTexto(req.body?.email),
       direccion: opcionalTexto(req.body?.direccion),
       notas: opcionalTexto(req.body?.notas),
-    });
+    }, accion);
     res.status(201).json(cliente);
   })
 );
@@ -48,6 +59,7 @@ router.put(
   '/:id',
   envolver(async (req, res) => {
     const nombre = stringObligatorio(req.body?.nombre, 'nombre');
+    const accion = req.body?.accion === 'cambiar' || req.body?.accion === 'compartir' ? req.body?.accion : undefined;
     const cliente = await clientes.actualizarCliente(Number(req.params.id), {
       nombre,
       telefono: opcionalTexto(req.body?.telefono),
@@ -55,7 +67,7 @@ router.put(
       email: opcionalTexto(req.body?.email),
       direccion: opcionalTexto(req.body?.direccion),
       notas: opcionalTexto(req.body?.notas),
-    });
+    }, accion);
     res.json(cliente);
   })
 );

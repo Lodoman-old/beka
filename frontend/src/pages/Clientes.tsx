@@ -57,6 +57,10 @@ export default function Clientes() {
   const [portal, setPortal] = useState<Cliente | null>(null);
   const [copiado, setCopiado] = useState<string | null>(null);
   const [form, setForm] = useState<Formulario>(vacio);
+  const [duplicado, setDuplicado] = useState<{
+    cuerpo: Record<string, string | null>;
+    nombres: string[];
+  } | null>(null);
 
   const regenerar = useAccion();
 
@@ -98,14 +102,34 @@ export default function Clientes() {
     setModal({ abierto: true, editar: c });
   };
 
+  const enviarCliente = async (cuerpo: Record<string, string | null>, modo?: 'cambiar' | 'compartir') => {
+    await accion.ejecutar(async () => {
+      if (modal.editar) await api.put(`/clientes/${modal.editar.id}`, { ...cuerpo, accion: modo });
+      else await api.post('/clientes', { ...cuerpo, accion: modo });
+      setModal({ abierto: false, editar: null });
+      setDuplicado(null);
+      await listado.recargar();
+    });
+  };
+
   const guardar = (e: FormEvent) => {
     e.preventDefault();
     void accion.ejecutar(async () => {
       const cuerpo = { ...form, telefono: form.telefono || null, documento: form.documento || null };
-      if (modal.editar) await api.put(`/clientes/${modal.editar.id}`, cuerpo);
-      else await api.post('/clientes', cuerpo);
-      setModal({ abierto: false, editar: null });
-      await listado.recargar();
+      const telefono = form.telefono?.trim();
+      if (telefono) {
+        const r = await api.get<{ existe: boolean; clientes: { id: number; nombre: string }[] }>(
+          `/clientes/telefono-existe${q({
+            telefono,
+            excepto: modal.editar ? String(modal.editar.id) : '',
+          })}`
+        );
+        if (r.existe) {
+          setDuplicado({ cuerpo, nombres: r.clientes.map((c) => c.nombre) });
+          return;
+        }
+      }
+      await enviarCliente(cuerpo);
     });
   };
 
@@ -368,6 +392,54 @@ export default function Clientes() {
               >
                 <RefreshCw size={16} />
                 {regenerar.ocupado ? 'Generando…' : 'Generar nuevas credenciales'}
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
+
+      <Modal
+        abierto={!!duplicado}
+        onCerrar={() => setDuplicado(null)}
+        titulo="El teléfono ya está registrado"
+      >
+        {duplicado && (
+          <>
+            <p className="text-sm text-slate-600 mb-4">
+              El teléfono <span className="font-semibold">{form.telefono}</span> ya está registrado para{' '}
+              <span className="font-semibold">{duplicado.nombres.join(', ')}</span>. ¿Qué quieres hacer?
+            </p>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => void enviarCliente(duplicado.cuerpo, 'cambiar')}
+                disabled={accion.ocupado}
+                className={`${botonPrimario} w-full`}
+              >
+                Cambiar el número al nuevo cliente
+              </button>
+              <p className="text-[11px] text-slate-400 -mt-1">
+                El cliente anterior pierde el acceso con ese número; sus ventas quedan en su registro.
+              </p>
+              <button
+                type="button"
+                onClick={() => void enviarCliente(duplicado.cuerpo, 'compartir')}
+                disabled={accion.ocupado}
+                className={`${botonSecundario} w-full`}
+              >
+                Dejar el mismo número para ambos
+              </button>
+              <p className="text-[11px] text-slate-400 -mt-1">
+                Al entrar al portal, cada uno elige su nombre para ver sus propias ventas.
+              </p>
+            </div>
+            <div className="flex gap-3 justify-end mt-5">
+              <button
+                type="button"
+                onClick={() => setDuplicado(null)}
+                className={botonSecundario}
+              >
+                Usar otro número
               </button>
             </div>
           </>

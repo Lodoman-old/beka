@@ -32,6 +32,7 @@ export default function Portal() {
   const [cargando, setCargando] = useState(false);
   const [datos, setDatos] = useState<MiCuenta | null>(null);
   const [sesion, setSesion] = useState<{ nombre: string } | null>(null);
+  const [candidatos, setCandidatos] = useState<{ id: number; nombre: string }[] | null>(null);
 
   const base = obtenerBaseUrl();
 
@@ -72,9 +73,41 @@ export default function Portal() {
       });
       const cuerpo = await r.json();
       if (!r.ok) throw new Error((cuerpo as { error?: string }).error ?? 'Error al entrar');
-      localStorage.setItem(TOKEN_CLIENTE, (cuerpo as { token: string }).token);
-      setSesion({ nombre: (cuerpo as { nombre: string }).nombre });
-      await cargarCuenta((cuerpo as { token: string }).token);
+      const respuesta = cuerpo as {
+        token?: string;
+        nombre?: string;
+        requiere_seleccion?: boolean;
+        clientes?: { id: number; nombre: string }[];
+      };
+      if (respuesta.requiere_seleccion) {
+        setCandidatos(respuesta.clientes ?? []);
+        return;
+      }
+      if (!respuesta.token) throw new Error('Respuesta inválida del servidor');
+      localStorage.setItem(TOKEN_CLIENTE, respuesta.token);
+      setSesion({ nombre: respuesta.nombre ?? '' });
+      await cargarCuenta(respuesta.token);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  async function elegirCliente(id: number) {
+    setCargando(true);
+    setError('');
+    try {
+      const r = await fetch(`${base}/api/portal/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usuario, password, cliente_id: id }),
+      });
+      const cuerpo = (await r.json()) as { error?: string; token?: string; nombre?: string };
+      if (!r.ok || !cuerpo.token) throw new Error(cuerpo.error ?? 'Error al entrar');
+      localStorage.setItem(TOKEN_CLIENTE, cuerpo.token);
+      setSesion({ nombre: cuerpo.nombre ?? '' });
+      await cargarCuenta(cuerpo.token);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -191,41 +224,71 @@ export default function Portal() {
           </div>
           <h1 className="text-2xl font-black text-white">Consulta tus cuentas</h1>
           <p className="text-slate-400 text-sm mt-1">
-            Entra con el usuario y contraseña que te enviaron por WhatsApp
+            Entra con <span className="text-slate-200 font-medium">tu número de teléfono</span> y la contraseña
+            que te enviaron por WhatsApp
           </p>
         </div>
-        <form onSubmit={alEnviar} className="bg-white rounded-2xl shadow-2xl p-6 space-y-4">
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700 mb-1 block">Usuario</span>
-            <input
-              value={usuario}
-              onChange={(e) => setUsuario(e.target.value)}
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-marca-500"
-              autoCapitalize="none"
-              autoComplete="username"
-              required
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700 mb-1 block">Contraseña</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-marca-500"
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-          <button
-            type="submit"
-            disabled={cargando}
-            className="w-full bg-marca-600 hover:bg-marca-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-60"
-          >
-            {cargando ? 'Entrando...' : 'Ver mis cuentas'}
-          </button>
-        </form>
+        {candidatos ? (
+          <div className="bg-white rounded-2xl shadow-2xl p-6">
+            <p className="text-sm font-semibold text-slate-800 mb-1">
+              Este número está registrado para varios clientes
+            </p>
+            <p className="text-sm text-slate-500 mb-4">¿Cuál eres?</p>
+            <div className="space-y-2">
+              {candidatos.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => void elegirCliente(c.id)}
+                  disabled={cargando}
+                  className="w-full text-left bg-slate-50 hover:bg-marca-50 border border-slate-200 hover:border-marca-300 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 transition disabled:opacity-60"
+                >
+                  {c.nombre}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setCandidatos(null)}
+              className="w-full text-center text-sm text-slate-400 hover:text-slate-600 mt-4"
+            >
+              ← Volver
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={alEnviar} className="bg-white rounded-2xl shadow-2xl p-6 space-y-4">
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700 mb-1 block">Tu número de teléfono</span>
+              <input
+                value={usuario}
+                onChange={(e) => setUsuario(e.target.value)}
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-marca-500"
+                inputMode="tel"
+                autoCapitalize="none"
+                autoComplete="username"
+                placeholder="412 134 0765"
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-700 mb-1 block">Contraseña</span>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-marca-500"
+                autoComplete="current-password"
+                required
+              />
+            </label>
+            {error && <p className="text-red-600 text-sm">{error}</p>}
+            <button
+              type="submit"
+              disabled={cargando}
+              className="w-full bg-marca-600 hover:bg-marca-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-60"
+            >
+              {cargando ? 'Entrando...' : 'Ver mis cuentas'}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

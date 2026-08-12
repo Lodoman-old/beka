@@ -13,27 +13,47 @@ function generarContrasenaPortal(): string {
   return contrasena;
 }
 
-async function generarUsuarioPortal(telefono: string | null | undefined, nombre: string): Promise<string> {
-  const base =
-    (telefono ?? '').replace(/\D/g, '').slice(-8) ||
-    nombre.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8);
-  for (let intento = 0; intento < 10; intento++) {
-    const candidato = intento === 0 ? base : `${base}${Math.floor(Math.random() * 90 + 10)}`;
-    const { rows } = await pool.query('SELECT 1 FROM clientes WHERE usuario_portal = $1', [candidato]);
-    if (!rows.length) return candidato;
-  }
-  return `${base}${Date.now().toString(36)}`;
+function normalizarTelefono(telefono: string | null | undefined): string | null {
+  if (!telefono) return null;
+  const digitos = telefono.replace(/\D/g, '');
+  return digitos.length ? digitos : null;
 }
 
-async function generarCredencialesPortal(telefono: string | null | undefined, nombre: string): Promise<{
-  usuario_portal: string;
+async function generarCredencialesPortal(telefono: string | null | undefined): Promise<{
+  usuario_portal: string | null;
   pass_hash_portal: string;
   pass_plano_portal: string;
 }> {
-  const usuario_portal = await generarUsuarioPortal(telefono, nombre);
+  const usuario_portal = telefono?.trim() || null;
   const pass_plano_portal = generarContrasenaPortal();
   const pass_hash_portal = await hashPassword(pass_plano_portal);
   return { usuario_portal, pass_hash_portal, pass_plano_portal };
+}
+
+export async function buscarClientesPorTelefono(
+  telefono: string | null | undefined,
+  exceptoId?: number
+): Promise<{ id: number; nombre: string; activo: boolean }[]> {
+  const digitos = normalizarTelefono(telefono);
+  if (!digitos) return [];
+  const { rows } = await pool.query(
+    `SELECT id, nombre, activo FROM clientes
+      WHERE telefono IS NOT NULL
+        AND REGEXP_REPLACE(telefono, $2, '', 'g') = $1
+        AND id <> COALESCE($3, -1)
+      ORDER BY activo DESC, nombre ASC`,
+    [digitos, '\\D', exceptoId ?? -1]
+  );
+  return rows as { id: number; nombre: string; activo: boolean }[];
+}
+
+async function quitarTelefonoA(ids: number[]): Promise<void> {
+  if (!ids.length) return;
+  await pool.query(
+    `UPDATE clientes SET telefono = NULL, usuario_portal = NULL, updated_at = now()
+      WHERE id = ANY($1)`,
+    [ids]
+  );
 }
 
 export interface DatosCliente {
@@ -77,12 +97,29 @@ export async function listarClientes(opts: {
   return { total: total[0]?.total ?? 0, filas: rows };
 }
 
-export async function crearCliente(datos: DatosCliente): Promise<FilaCliente> {
-  const credenciales = await generarCredencialesPortal(datos.telefono, datos.nombre);
+export async function crearCliente(
+  datos: DatosCliente,
+  accion?: 'cambiar' | 'compartir'
+): Promise<FilaCliente> {
+  const telefono = datos.telefono?.trim() || null;
+  if (telefono) {
+    const duplicados = await buscarClientesPorTelefono(telefono);
+    if (duplicados.length) {
+      if (accion === 'cambiar') {
+        await quitarTelefonoA(duplicados.map((d) => d.id));
+      } else if (accion !== 'compartir') {
+        throw new AppError(
+          409,
+          `El teléfono ${telefono} ya está registrado para ${duplicados.map((d) => d.nombre).join(', ')}`
+        );
+      }
+    }
+  }
+  const credenciales = await generarCredencialesPortal(telefono);
   const { rows } = await pool.query(
     `INSERT INTO clientes (nombre, telefono, documento, email, direccion, notas, usuario_portal, pass_hash_portal, pass_plano_portal)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-    [datos.nombre, datos.telefono || null, datos.documento || null, datos.email || null, datos.direccion || null, datos.notas || null, credenciales.usuario_portal, credenciales.pass_hash_portal, credenciales.pass_plano_portal]
+    [datos.nombre, telefono, datos.documento || null, datos.email || null, datos.direccion || null, datos.notas || null, credenciales.usuario_portal, credenciales.pass_hash_portal, credenciales.pass_plano_portal]
   );
   return rows[0];
 }
@@ -92,16 +129,35 @@ export async function obtenerCliente(id: number): Promise<FilaCliente | null> {
   return rows[0] ?? null;
 }
 
-export async function actualizarCliente(id: number, datos: DatosCliente): Promise<FilaCliente> {
+export async function actualizarCliente(
+  id: number,
+  datos: DatosCliente,
+  accion?: 'cambiar' | 'compartir'
+): Promise<FilaCliente> {
   const existe = await obtenerCliente(id);
   if (!existe) throw new AppError(404, 'Cliente no encontrado');
+
+  const telefono = datos.telefono?.trim() || null;
+  if (telefono) {
+    const duplicados = await buscarClientesPorTelefono(telefono, id);
+    if (duplicados.length) {
+      if (accion === 'cambiar') {
+        await quitarTelefonoA(duplicados.map((d) => d.id));
+      } else if (accion !== 'compartir') {
+        throw new AppError(
+          409,
+          `El teléfono ${telefono} ya está registrado para ${duplicados.map((d) => d.nombre).join(', ')}`
+        );
+      }
+    }
+  }
 
   const { rows } = await pool.query(
     `UPDATE clientes
         SET nombre = $1, telefono = $2, documento = $3, email = $4,
-            direccion = $5, notas = $6, updated_at = now()
-      WHERE id = $7 RETURNING *`,
-    [datos.nombre, datos.telefono || null, datos.documento || null, datos.email || null, datos.direccion || null, datos.notas || null, id]
+            direccion = $5, notas = $6, usuario_portal = $7, updated_at = now()
+      WHERE id = $8 RETURNING *`,
+    [datos.nombre, telefono, datos.documento || null, datos.email || null, datos.direccion || null, datos.notas || null, telefono, id]
   );
   return rows[0];
 }
@@ -109,27 +165,30 @@ export async function actualizarCliente(id: number, datos: DatosCliente): Promis
 export async function regenerarCredencialesPortal(id: number): Promise<{ usuario_portal: string; pass_plano_portal: string }> {
   const existe = await obtenerCliente(id);
   if (!existe) throw new AppError(404, 'Cliente no encontrado');
+  if (!existe.telefono) {
+    throw new AppError(400, 'El cliente no tiene teléfono; sin teléfono no puede acceder al portal');
+  }
   const pass_plano_portal = generarContrasenaPortal();
   const pass_hash_portal = await hashPassword(pass_plano_portal);
-  let usuario_portal = existe.usuario_portal;
-  if (!usuario_portal) {
-    usuario_portal = await generarUsuarioPortal(existe.telefono, existe.nombre);
-  }
   await pool.query(
     'UPDATE clientes SET usuario_portal = $1, pass_hash_portal = $2, pass_plano_portal = $3, updated_at = now() WHERE id = $4',
-    [usuario_portal, pass_hash_portal, pass_plano_portal, id]
+    [existe.telefono, pass_hash_portal, pass_plano_portal, id]
   );
-  return { usuario_portal, pass_plano_portal };
+  return { usuario_portal: existe.telefono, pass_plano_portal };
 }
 
 export async function asegurarCredencialesPortal(telefono: string | null | undefined): Promise<{
   usuario_portal: string;
   pass_plano_portal: string;
 } | null> {
-  if (!telefono) return null;
+  const digitos = normalizarTelefono(telefono);
+  if (!digitos) return null;
   const { rows } = await pool.query(
-    'SELECT * FROM clientes WHERE telefono = $1 AND activo = TRUE LIMIT 1',
-    [telefono]
+    `SELECT * FROM clientes
+      WHERE activo = TRUE AND telefono IS NOT NULL
+        AND REGEXP_REPLACE(telefono, $2, '', 'g') = $1
+      LIMIT 1`,
+    [digitos, '\\D']
   );
   const cliente = rows[0] as FilaCliente | undefined;
   if (!cliente?.id) return null;

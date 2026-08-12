@@ -9,27 +9,75 @@ interface ClientePortal {
   id: number;
   nombre: string;
   telefono: string | null;
-  usuario_portal: string | null;
   pass_hash_portal: string | null;
 }
 
 router.post(
   '/login',
   envolver(async (req, res) => {
-    const { usuario, password } = req.body as { usuario?: string; password?: string };
+    const { usuario, password, cliente_id } = req.body as {
+      usuario?: string;
+      password?: string;
+      cliente_id?: number;
+    };
     if (!usuario || !password) throw new AppError(400, 'Usuario y contraseña son obligatorios');
-    const { rows } = await pool.query(
-      `SELECT id, nombre, telefono, usuario_portal, pass_hash_portal
-         FROM clientes
-        WHERE usuario_portal = $1 AND activo = TRUE`,
-      [String(usuario).trim().toLowerCase()]
-    );
-    const cliente = rows[0] as ClientePortal | undefined;
-    if (!cliente || !cliente.pass_hash_portal || !(await verificarPassword(password, cliente.pass_hash_portal))) {
-      throw new AppError(401, 'Usuario o contraseña incorrectos');
+    const telefono = String(usuario).replace(/\D/g, '');
+    if (!telefono) throw new AppError(400, 'Escribe tu número de teléfono como usuario');
+
+    const coincide = async (id: number) => {
+      const { rows } = await pool.query(
+        `SELECT id, nombre, telefono, pass_hash_portal
+           FROM clientes
+          WHERE id = $1 AND activo = TRUE
+            AND telefono IS NOT NULL AND REGEXP_REPLACE(telefono, $3, '', 'g') = $2`,
+        [id, telefono, '\\D']
+      );
+      const candidato = rows[0] as ClientePortal | undefined;
+      if (!candidato?.pass_hash_portal) return null;
+      if (!(await verificarPassword(password, candidato.pass_hash_portal))) return null;
+      return candidato;
+    };
+
+    if (cliente_id) {
+      const elegido = await coincide(Number(cliente_id));
+      if (!elegido) throw new AppError(401, 'Usuario o contraseña incorrectos');
+      const token = firmarToken({ rol: ROL_CLIENTE, id: elegido.id, usuario: telefono });
+      res.json({ token, rol: ROL_CLIENTE, nombre: elegido.nombre });
+      return;
     }
-    const token = firmarToken({ rol: ROL_CLIENTE, id: cliente.id, usuario: cliente.usuario_portal ?? 'cliente' });
-    res.json({ token, rol: ROL_CLIENTE, nombre: cliente.nombre });
+
+    const { rows } = await pool.query(
+      `SELECT id, nombre, telefono, pass_hash_portal
+         FROM clientes
+        WHERE activo = TRUE AND telefono IS NOT NULL
+          AND REGEXP_REPLACE(telefono, $2, '', 'g') = $1
+        ORDER BY nombre ASC`,
+      [telefono, '\\D']
+    );
+    const candidatos = rows as ClientePortal[];
+
+    let coincidencia: ClientePortal | null = null;
+    for (const candidato of candidatos) {
+      if (
+        candidato.pass_hash_portal &&
+        (await verificarPassword(password, candidato.pass_hash_portal))
+      ) {
+        coincidencia = candidato;
+        break;
+      }
+    }
+    if (!coincidencia) throw new AppError(401, 'Usuario o contraseña incorrectos');
+
+    if (candidatos.length > 1) {
+      res.json({
+        requiere_seleccion: true,
+        clientes: candidatos.map((c) => ({ id: c.id, nombre: c.nombre })),
+      });
+      return;
+    }
+
+    const token = firmarToken({ rol: ROL_CLIENTE, id: coincidencia.id, usuario: telefono });
+    res.json({ token, rol: ROL_CLIENTE, nombre: coincidencia.nombre });
   })
 );
 
