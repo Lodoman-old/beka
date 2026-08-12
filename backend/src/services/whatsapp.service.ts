@@ -173,17 +173,54 @@ function programarReintento(): void {
   if (reintentoTimer) clearTimeout(reintentoTimer);
   reintentoTimer = setTimeout(() => {
     reintentoTimer = null;
-    if (cliente) {
-      void cliente.destroy().catch(() => undefined);
-      cliente = null;
-    }
-    sesionConectada = false;
-    qrPendiente = false;
-    errorInicializacion = null;
-    mensajeInicializado = false;
-    console.log('[whatsapp] reintentando inicializacion en 60s...');
-    inicializarWhatsApp();
+    void destruirYReiniciar('reintento programado');
   }, 60_000);
+}
+
+async function destruirYReiniciar(origen: string): Promise<void> {
+  if (cliente) {
+    const actual = cliente;
+    cliente = null;
+    sesionConectada = false;
+    try {
+      await actual.destroy();
+    } catch {
+      // el cliente ya no existia o no pudo apagarse; seguimos igual
+    }
+  }
+  sesionConectada = false;
+  qrPendiente = false;
+  errorInicializacion = null;
+  mensajeInicializado = false;
+  console.log(`[whatsapp] reiniciando sesion (${origen})...`);
+  await new Promise((r) => setTimeout(r, 3000));
+  inicializarWhatsApp();
+}
+
+function sesionEnDisco(): boolean {
+  try {
+    return fs.existsSync(path.join(env.WHATSAPP_SESION_DIR, 'session'));
+  } catch {
+    return false;
+  }
+}
+
+function restaurarSesionRespaldo(): void {
+  const dir = env.WHATSAPP_SESION_DIR;
+  try {
+    if (!fs.existsSync(dir) || sesionEnDisco()) return;
+    const respaldos = fs
+      .readdirSync(dir)
+      .filter((e) => e.startsWith('session-respaldo-'))
+      .map((e) => ({ nombre: e, ruta: path.join(dir, e) }))
+      .sort((a, b) => fs.statSync(b.ruta).mtimeMs - fs.statSync(a.ruta).mtimeMs);
+    const masReciente = respaldos[0];
+    if (!masReciente) return;
+    fs.renameSync(masReciente.ruta, path.join(dir, 'session'));
+    console.log('[whatsapp] sesion restaurada desde respaldo: ' + masReciente.nombre);
+  } catch (e) {
+    console.error('[whatsapp] no pude restaurar la sesion de respaldo:', (e as Error).message);
+  }
 }
 
 export function estadoWhatsApp(): {
@@ -191,6 +228,8 @@ export function estadoWhatsApp(): {
   estado: string;
   qr_pendiente: boolean;
   detalle: string | null;
+  sesion_en_disco?: boolean;
+  respaldo_en_disco?: boolean;
   candado?: typeof ultimaLimpieza;
 } {
   return {
@@ -206,6 +245,15 @@ export function estadoWhatsApp(): {
             : 'INICIANDO',
     qr_pendiente: qrPendiente,
     detalle: errorInicializacion,
+    sesion_en_disco: sesionEnDisco(),
+    respaldo_en_disco: (() => {
+      try {
+        if (!fs.existsSync(env.WHATSAPP_SESION_DIR)) return false;
+        return fs.readdirSync(env.WHATSAPP_SESION_DIR).some((e) => e.startsWith('session-respaldo-'));
+      } catch {
+        return false;
+      }
+    })(),
     candado: ultimaLimpieza,
   };
 }
@@ -290,6 +338,11 @@ export function inicializarWhatsApp(): void {
   limpiarCandadoPerfil();
   matarProcesosChromium();
   limpiarCandadoPerfil();
+  restaurarSesionRespaldo();
+
+  console.log(
+    `[whatsapp] sesion en disco: ${sesionEnDisco() ? 'SI (se reutilizara)' : 'NO (se pedira QR)'}`
+  );
 
   if (hayCandadoActivo()) {
     fallosCandado += 1;
@@ -338,7 +391,7 @@ export function inicializarWhatsApp(): void {
         .catch((e) => console.error('[whatsapp] no pude guardar el QR:', (e as Error).message));
     });
 
-    cliente.on('ready', () => {
+cliente.on('ready', () => {
       if (reintentoTimer) {
         clearTimeout(reintentoTimer);
         reintentoTimer = null;
@@ -346,6 +399,7 @@ export function inicializarWhatsApp(): void {
       sesionConectada = true;
       qrPendiente = false;
       errorInicializacion = null;
+      fallosCandado = 0;
       console.log('[whatsapp] Sesion conectada correctamente');
       void aplicarParcheLid().then(() => {
         iniciarColaDeReintentos();
@@ -614,17 +668,12 @@ export function reiniciarWhatsApp(): void {
     clearTimeout(reintentoTimer);
     reintentoTimer = null;
   }
-  if (cliente) {
-    void cliente.destroy().catch(() => undefined);
-    cliente = null;
+  if (!mensajeInicializado && !cliente) {
+    console.log('[whatsapp] reinicio a peticion del usuario: sin cliente activo, inicializando');
+    inicializarWhatsApp();
+    return;
   }
-  sesionConectada = false;
-  qrPendiente = false;
-  errorInicializacion = null;
-  mensajeInicializado = false;
-  fallosCandado = 0;
-  console.log('[whatsapp] reinicio forzado por el usuario');
-  inicializarWhatsApp();
+  void destruirYReiniciar('a peticion del usuario');
 }
 
 export function detenerWhatsApp(): void {

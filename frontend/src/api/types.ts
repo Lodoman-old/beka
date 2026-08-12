@@ -212,4 +212,6 @@ export interface EstadoWhatsApp {
   estado: string;
   qr_pendiente: boolean;
   detalle: string | null;
+  sesion_en_disco?: boolean;
+  respaldo_en_disco?: boolean;
 }

@@ -22,6 +22,7 @@ import {
 import { api, guardarUrlServidor, obtenerBaseUrl } from '../api/client';
 import { ValorConfig, EstadoWhatsApp } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
+import { useConfirmar } from '../components/Confirmar';
 import {
   Card,
   Campo,
@@ -64,6 +65,7 @@ export default function Configuracion() {
   const config = useApi<ValorConfig[]>(() => api.get('/config'), []);
   const whatsapp = useApi<EstadoWhatsApp>(() => api.get('/config/whatsapp'), []);
   const accion = useAccion();
+  const confirmar = useConfirmar();
   const [margen, setMargen] = useState('');
   const [nombreNegocio, setNombreNegocio] = useState('');
   const [urlNice, setUrlNice] = useState('');
@@ -307,8 +309,13 @@ export default function Configuracion() {
     lector.readAsDataURL(archivo);
   };
 
-  const quitarLogo = () => {
-    if (!confirm('¿Quitar el logo del negocio?')) return;
+  const quitarLogo = async () => {
+    const ok = await confirmar('¿Quitar el logo del negocio?', {
+      titulo: 'Quitar logo',
+      confirmarTexto: 'Quitar',
+      peligro: true,
+    });
+    if (!ok) return;
     void accion.ejecutar(async () => {
       await api.del('/config/logo');
       setLogoExiste(false);
@@ -572,6 +579,16 @@ export default function Configuracion() {
           Cada abono y cada venta envían al cliente su comprobante en texto y su recibo en PDF.
           Si la sesión se pierde, el sistema intenta reconectarse solo; si hace falta, vuelve a
           generar el QR para escanear.
+        </p>
+        <p className="text-xs text-slate-400 mt-1.5">
+          Sesión guardada en el servidor:{' '}
+          {whatsapp.datos?.sesion_en_disco === undefined
+            ? 'verificando…'
+            : whatsapp.datos.sesion_en_disco
+              ? 'sí — se reutilizará en cada arranque'
+              : whatsapp.datos.respaldo_en_disco
+                ? 'se recuperó un respaldo viejo'
+                : 'no — hay que escanear el QR'}
         </p>
         {!whatsappConectado && estado !== 'INICIANDO' && (
           <button
