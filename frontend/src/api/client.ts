@@ -10,6 +10,7 @@ const LOCAL_STORAGE_SERVER = 'beka_api_url';
 export function obtenerBaseUrl(): string {
   const guardada = localStorage.getItem(LOCAL_STORAGE_SERVER);
   if (guardada) return guardada;
+  if (Capacitor.isNativePlatform()) return BASE;
   if (
     typeof window !== 'undefined' &&
     window.location?.origin &&
