@@ -27,7 +27,7 @@ export default function Catalogo() {
   const [resultadoSku, setResultadoSku] = useState<Producto | null>(null);
   const [tarjeta, setTarjeta] = useState<null | { tipo: 'error' | 'exito'; msg: string }>(null);
   const [nuevo, setNuevo] = useState(false);
-  const [formNuevo, setFormNuevo] = useState({ sku: '', nombre: '', precio_costo: '', imagen: '' });
+  const [formNuevo, setFormNuevo] = useState({ sku: '', nombre: '', talla: '', color: '', precio_costo: '', imagen: '' });
   const [subiendoNuevo, setSubiendoNuevo] = useState(false);
   const [imagenZoom, setImagenZoom] = useState<Producto | null>(null);
 
@@ -71,6 +71,8 @@ export default function Catalogo() {
     const ok = await accion.ejecutar(async () => {
       await api.put(`/catalogo/${editar.id}`, {
         nombre: datos.nombre ?? editar.nombre,
+        talla: datos.talla !== undefined ? datos.talla : editar.talla,
+        color: datos.color !== undefined ? datos.color : editar.color,
         precio_costo: datos.precio_costo ?? editar.precio_costo,
         activo: datos.activo ?? editar.activo,
         sku: editar.sku,
@@ -88,11 +90,13 @@ export default function Catalogo() {
       await api.post('/catalogo', {
         sku: formNuevo.sku.trim(),
         nombre: formNuevo.nombre.trim(),
+        talla: formNuevo.talla.trim() || null,
+        color: formNuevo.color.trim() || null,
         precio_costo: Number(formNuevo.precio_costo),
         imagen: formNuevo.imagen.trim() || null,
       });
       setNuevo(false);
-      setFormNuevo({ sku: '', nombre: '', precio_costo: '', imagen: '' });
+      setFormNuevo({ sku: '', nombre: '', talla: '', color: '', precio_costo: '', imagen: '' });
       await listado.recargar();
     });
     if (ok) setTarjeta({ tipo: 'exito', msg: 'Producto agregado al catálogo' });
@@ -163,6 +167,11 @@ export default function Catalogo() {
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-marca-600">SKU {resultadoSku.sku}</p>
               <p className="font-semibold text-slate-800 truncate">{resultadoSku.nombre}</p>
+              {(resultadoSku.talla || resultadoSku.color) && (
+                <p className="text-xs text-slate-500">
+                  {[resultadoSku.talla, resultadoSku.color].filter(Boolean).join(' · ')}
+                </p>
+              )}
               <p className="text-sm text-slate-500">
                 Costo <span className="line-through">{moneda(resultadoSku.precio_costo)}</span>
                 {' · '}
@@ -219,6 +228,20 @@ export default function Catalogo() {
               <p className="text-sm font-medium text-slate-700 line-clamp-2 min-h-[2.5rem]">
                 {p.nombre}
               </p>
+              {(p.talla || p.color) && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {p.talla && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">
+                      {p.talla}
+                    </span>
+                  )}
+                  {p.color && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">
+                      {p.color}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="mt-1.5 flex items-baseline gap-1.5">
                 <span className="font-bold text-emerald-600">{moneda(p.precio_publico)}</span>
                 <span className="text-[10px] text-slate-300 line-through">
@@ -308,6 +331,24 @@ export default function Catalogo() {
               onChange={(e) => setFormNuevo({ ...formNuevo, nombre: e.target.value })}
             />
           </Campo>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo etiqueta="Talla">
+              <input
+                className={inputClase}
+                placeholder="Ej. M, 27, 4"
+                value={formNuevo.talla}
+                onChange={(e) => setFormNuevo({ ...formNuevo, talla: e.target.value })}
+              />
+            </Campo>
+            <Campo etiqueta="Color">
+              <input
+                className={inputClase}
+                placeholder="Ej. Negro, Azul marino"
+                value={formNuevo.color}
+                onChange={(e) => setFormNuevo({ ...formNuevo, color: e.target.value })}
+              />
+            </Campo>
+          </div>
           <Campo etiqueta="Precio de costo ($) *">
             <input
               required
@@ -405,6 +446,8 @@ function FormProducto({
   error: string | null;
 }) {
   const [nombre, setNombre] = useState(producto.nombre);
+  const [talla, setTalla] = useState(producto.talla ?? '');
+  const [color, setColor] = useState(producto.color ?? '');
   const [costo, setCosto] = useState(String(producto.precio_costo));
   const [margen, setMargen] = useState(String(producto.margen_aplicado));
   const [imagen, setImagen] = useState(producto.imagen ?? '');
@@ -432,6 +475,8 @@ function FormProducto({
         e.preventDefault();
         guardar({
           nombre,
+          talla: talla.trim() || null,
+          color: color.trim() || null,
           precio_costo: Number(costo),
           margen: Number(margen),
           activo,
@@ -442,6 +487,24 @@ function FormProducto({
       <Campo etiqueta="Nombre">
         <input className={inputClase} value={nombre} onChange={(e) => setNombre(e.target.value)} />
       </Campo>
+      <div className="grid grid-cols-2 gap-3">
+        <Campo etiqueta="Talla">
+          <input
+            className={inputClase}
+            placeholder="Ej. M, 27, 4"
+            value={talla}
+            onChange={(e) => setTalla(e.target.value)}
+          />
+        </Campo>
+        <Campo etiqueta="Color">
+          <input
+            className={inputClase}
+            placeholder="Ej. Negro, Azul marino"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+          />
+        </Campo>
+      </div>
       <Campo etiqueta="Precio de costo ($)">
         <input
           className={inputClase}

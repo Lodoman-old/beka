@@ -17,6 +17,8 @@ export interface FilaProducto {
   id: number;
   sku: string;
   nombre: string;
+  talla: string | null;
+  color: string | null;
   precio_costo: number;
   precio_publico: number;
   margen_aplicado: number;

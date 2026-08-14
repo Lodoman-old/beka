@@ -230,16 +230,20 @@ export async function obtenerProducto(id: number): Promise<FilaProducto | null> 
 export async function crearProductoManual(datos: {
   sku: string;
   nombre: string;
+  talla?: string | null;
+  color?: string | null;
   precio_costo: number;
   imagen?: string | null;
 }): Promise<FilaProducto> {
   const margen = await margenActual();
   const { rows } = await pool.query(
-    `INSERT INTO catalogo_productos (sku, nombre, precio_costo, precio_publico, margen_aplicado, imagen)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    `INSERT INTO catalogo_productos (sku, nombre, talla, color, precio_costo, precio_publico, margen_aplicado, imagen)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
     [
       datos.sku.trim(),
       datos.nombre.trim(),
+      datos.talla?.trim() || null,
+      datos.color?.trim() || null,
       datos.precio_costo,
       calcularPrecioPublico(datos.precio_costo, margen),
       margen,
@@ -252,7 +256,9 @@ export async function crearProductoManual(datos: {
 export async function actualizarProducto(
   id: number,
   datos: Partial<
-    Pick<FilaProducto, 'nombre' | 'precio_costo' | 'imagen' | 'activo' | 'sku'> & { margen?: number }
+    Pick<FilaProducto, 'nombre' | 'talla' | 'color' | 'precio_costo' | 'imagen' | 'activo' | 'sku'> & {
+      margen?: number;
+    }
   >
 ): Promise<FilaProducto> {
   const existe = await obtenerProducto(id);
@@ -266,11 +272,13 @@ export async function actualizarProducto(
 
   const { rows } = await pool.query(
     `UPDATE catalogo_productos
-        SET nombre = $1, precio_costo = $2, precio_publico = $3,
-            margen_aplicado = $4, imagen = $5, activo = $6, sku = $7, updated_at = now()
-      WHERE id = $8 RETURNING *`,
+        SET nombre = $1, talla = $2, color = $3, precio_costo = $4, precio_publico = $5,
+            margen_aplicado = $6, imagen = $7, activo = $8, sku = $9, updated_at = now()
+      WHERE id = $10 RETURNING *`,
     [
       datos.nombre ?? existe.nombre,
+      datos.talla !== undefined ? datos.talla?.trim() || null : existe.talla,
+      datos.color !== undefined ? datos.color?.trim() || null : existe.color,
       datos.precio_costo ?? existe.precio_costo,
       calcularPrecioPublico(datos.precio_costo ?? existe.precio_costo, margen),
       margen,

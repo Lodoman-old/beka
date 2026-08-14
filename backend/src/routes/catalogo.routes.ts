@@ -59,6 +59,8 @@ router.post(
     const producto = await catalogo.crearProductoManual({
       sku: stringObligatorio(req.body?.sku, 'sku'),
       nombre: stringObligatorio(req.body?.nombre, 'nombre'),
+      talla: opcionalTexto(req.body?.talla),
+      color: opcionalTexto(req.body?.color),
       precio_costo: numeroPositivo(req.body?.precio_costo ?? 0, 'precio_costo'),
       imagen: opcionalTexto(req.body?.imagen),
     });
@@ -72,6 +74,8 @@ router.put(
     const producto = await catalogo.actualizarProducto(Number(req.params.id), {
       sku: req.body?.sku !== undefined ? stringObligatorio(req.body.sku, 'sku') : undefined,
       nombre: req.body?.nombre !== undefined ? stringObligatorio(req.body.nombre, 'nombre') : undefined,
+      talla: req.body?.talla !== undefined ? opcionalTexto(req.body.talla) : undefined,
+      color: req.body?.color !== undefined ? opcionalTexto(req.body.color) : undefined,
       precio_costo:
         req.body?.precio_costo !== undefined ? numeroPositivo(req.body.precio_costo, 'precio_costo') : undefined,
       margen: req.body?.margen !== undefined ? numeroPositivo(req.body.margen, 'margen') : undefined,
