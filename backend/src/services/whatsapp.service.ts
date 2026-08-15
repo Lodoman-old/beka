@@ -376,11 +376,30 @@ const original = window.WWebJS && window.WWebJS.getChat;
             }
             window.__bekaUsync = async function (numero) {
               if (window.__bekaLidCache[numero]) return window.__bekaLidCache[numero];
-              const query = window.require('WAWebContactSyncUtils').constructUsyncDeltaQuery([{ type: 'add', phoneNumber: numero }]);
-              const r = await query.execute();
-              const lid = r && Array.isArray(r.list) && r.list.length && r.list[0] && (r.list[0].id || r.list[0].lid);
-              if (lid) window.__bekaLidCache[numero] = lid;
-              return lid || null;
+              const variantes = [String(numero)];
+              if (String(numero).length === 12 && String(numero).startsWith('52')) variantes.push('521' + String(numero).slice(2));
+              if (String(numero).length === 13 && String(numero).startsWith('521')) variantes.push('52' + String(numero).slice(3));
+              for (const variante of variantes) {
+                try {
+                  const query = window.require('WAWebContactSyncUtils').constructUsyncDeltaQuery([{ type: 'add', phoneNumber: variante }]);
+                  const r = await query.execute();
+                  const item = r && Array.isArray(r.list) && r.list.length ? r.list[0] : null;
+                  let idResuelto = null;
+                  if (item) {
+                    if (typeof item.id === 'string') idResuelto = item.id;
+                    else if (item.id && item.id._serialized) idResuelto = item.id._serialized;
+                    else if (item.lid) idResuelto = item.lid;
+                    else if (item.user) idResuelto = item.user + '@lid';
+                  }
+                  if (idResuelto && /@/.test(idResuelto)) {
+                    window.__bekaLidCache[numero] = idResuelto;
+                    return idResuelto;
+                  }
+                } catch (e) {
+                  console.error('[parche-lid] usync fallo variante ' + variante + ': ' + (e && e.message));
+                }
+              }
+              return null;
             };
 window.WWebJS.getChat = async function (chatId, opts) {
               const numero = String(chatId).split('@')[0];
