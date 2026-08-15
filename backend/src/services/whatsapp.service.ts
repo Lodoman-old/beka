@@ -338,12 +338,19 @@ async function aplicarParcheLid(): Promise<void> {
       };
     }).pupPage;
     if (!pagina) return;
-    pagina.on('console', (m) => {
+pagina.on('console', (m) => {
       const mensaje = (m as unknown as { text: () => string }).text();
-      if (mensaje && /parche-lid|WWebJS|lid/i.test(mensaje)) {
+      if (mensaje && /parche-lid|WWebJS|lid|error/i.test(mensaje)) {
         console.log(`[wa-page] ${mensaje}`);
       }
     });
+    (pagina as unknown as { on: (e: string, fn: (err: unknown) => void) => void }).on(
+      'pageerror',
+      (err) => {
+        const e = err as { message?: string; stack?: string };
+        console.error(`[wa-page] pageerror: ${e?.message} ${e?.stack || ''}`);
+      }
+    );
 const resultado = await pagina.evaluate(`
       (() => {
         try {
@@ -354,6 +361,19 @@ const resultado = await pagina.evaluate(`
 const original = window.WWebJS && window.WWebJS.getChat;
           if (original) {
             window.__bekaLidCache = window.__bekaLidCache || {};
+            const sendOriginal = window.WWebJS.sendMessage;
+            if (sendOriginal) {
+              window.WWebJS.sendMessage = async function (chat, content, options) {
+                try {
+                  const r = await sendOriginal.call(this, chat, content, options);
+                  console.log('[parche-lid] sendMessage OK ' + (chat && chat.id && chat.id._serialized));
+                  return r;
+                } catch (e) {
+                  console.error('[parche-lid] sendMessage ERROR ' + (chat && chat.id && chat.id._serialized) + ' -> ' + e.name + ': ' + e.message + '\\n' + (e.stack || '').split('\\n').slice(0, 15).join('\\n'));
+                  throw e;
+                }
+              };
+            }
             window.__bekaUsync = async function (numero) {
               if (window.__bekaLidCache[numero]) return window.__bekaLidCache[numero];
               const query = window.require('WAWebContactSyncUtils').constructUsyncDeltaQuery([{ type: 'add', phoneNumber: numero }]);
@@ -372,7 +392,26 @@ window.WWebJS.getChat = async function (chatId, opts) {
                   if (creado && creado.chat) {
                     const { getAsModel = true } = opts || {};
                     console.log('[parche-lid] getChat CON LID OK ' + chatId);
-                    return getAsModel ? await window.WWebJS.getChatModel(creado.chat, { isChannel: false }) : creado.chat;
+                    if (!getAsModel) return creado.chat;
+                    try {
+                      return await window.WWebJS.getChatModel(creado.chat, { isChannel: false });
+                    } catch (e) {
+                      console.error('[parche-lid] getChatModel fallo ' + chatId + ' -> ' + e.name + ': ' + e.message);
+                      return {
+                        id: creado.chat.id,
+                        formattedTitle: typeof creado.chat.formattedTitle === 'function' ? creado.chat.formattedTitle() : (creado.chat.formattedTitle || ''),
+                        isGroup: false,
+                        isReadOnly: false,
+                        unreadCount: 0,
+                        t: 0,
+                        archive: false,
+                        pin: false,
+                        isLocked: false,
+                        isMuted: false,
+                        muteExpiration: 0,
+                        lastMessage: null
+                      };
+                    }
                   }
                 }
               } catch (e) {
