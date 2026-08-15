@@ -244,7 +244,7 @@ function programarReintento(): void {
 }
 
 async function destruirYReiniciar(origen: string): Promise<void> {
-  sincronizarSesionSiHay();
+  if (sesionConectada) sincronizarSesionSiHay();
   if (cliente) {
     const actual = cliente;
     cliente = null;
@@ -437,7 +437,7 @@ export function inicializarWhatsApp(): void {
 authStrategy: new LocalAuth({
         dataPath: TRABAJO,
       }),
-      webVersion: '2.3000.1041220451-alpha',
+      webVersion: '2.3000.1045241378-alpha',
       webVersionCache: {
         type: 'remote',
         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/%s.html',
@@ -751,7 +751,7 @@ export function reiniciarWhatsApp(): void {
 
 export function detenerWhatsApp(): void {
   apagando = true;
-  sincronizarSesionSiHay();
+  if (sesionConectada) sincronizarSesionSiHay();
   if (reintentos) clearInterval(reintentos);
   if (reintentoTimer) {
     clearTimeout(reintentoTimer);
