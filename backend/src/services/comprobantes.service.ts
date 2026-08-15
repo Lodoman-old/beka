@@ -7,11 +7,18 @@ function moneda(cantidad: number): string {
   return `$${cantidad.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const ZONA_HORARIA = 'America/Mexico_City';
+
 function fechaTexto(fecha: string | Date, conHora = false): string {
   const d = new Date(fecha);
-  const texto = d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const texto = d.toLocaleDateString('es-MX', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: ZONA_HORARIA,
+  });
   if (!conHora) return texto;
-  return `${texto} ${d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })}`;
+  return `${texto} ${d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: ZONA_HORARIA })}`;
 }
 
 type PDFDoc = typeof PDFDocument;
