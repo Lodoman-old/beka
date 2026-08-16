@@ -20,7 +20,7 @@ COPY backend/scripts ./scripts
 RUN npm run build
 
 # ---------- Etapa 3: imagen final con Chrome para WhatsApp ----------
-FROM ghcr.io/puppeteer/puppeteer:23.11.1
+FROM ghcr.io/puppeteer/puppeteer:25.7.0
 USER root
 RUN ln -sf /home/pptruser/.cache/puppeteer/chrome/*/chrome-linux64/chrome /usr/bin/google-chrome
 ENV NODE_ENV=production

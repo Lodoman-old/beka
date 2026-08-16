@@ -30,6 +30,12 @@ let errorInicializacion: string | null = null;
 let reintentos: ReturnType<typeof setInterval> | null = null;
 let reintentoTimer: ReturnType<typeof setTimeout> | null = null;
 let apagando = false;
+let generacion = 0;
+let inicializando = false;
+let reiniciando = false;
+let fallosConsecutivos = 0;
+
+const REINTENTOS_BACKOFF = [60_000, 120_000, 300_000, 900_000];
 
 const TRABAJO = '/tmp/beka-auth';
 
@@ -237,31 +243,51 @@ function hayCandadoActivo(): boolean {
 
 function programarReintento(): void {
   if (reintentoTimer) clearTimeout(reintentoTimer);
+  const espera = REINTENTOS_BACKOFF[Math.min(fallosConsecutivos, REINTENTOS_BACKOFF.length - 1)];
+  console.log(
+    `[whatsapp] reconexion programada en ${Math.round(espera / 1000)}s (fallos consecutivos: ${fallosConsecutivos})`
+  );
   reintentoTimer = setTimeout(() => {
     reintentoTimer = null;
     void destruirYReiniciar('reintento programado');
-  }, 60_000);
+  }, espera);
 }
 
 async function destruirYReiniciar(origen: string): Promise<void> {
-  if (sesionConectada) sincronizarSesionSiHay();
-  if (cliente) {
-    const actual = cliente;
-    cliente = null;
-    sesionConectada = false;
-    try {
-      await actual.destroy();
-    } catch {
-      // el cliente ya no existia o no pudo apagarse; seguimos igual
-    }
+  if (reiniciando) {
+    console.log(`[whatsapp] reinicio ignorado: ya hay uno en curso (${origen})`);
+    return;
   }
-  sesionConectada = false;
-  qrPendiente = false;
-  errorInicializacion = null;
-  mensajeInicializado = false;
-  console.log(`[whatsapp] reiniciando sesion (${origen})...`);
-  await new Promise((r) => setTimeout(r, 3000));
-  inicializarWhatsApp();
+  reiniciando = true;
+  try {
+    if (sesionConectada) sincronizarSesionSiHay();
+    if (cliente) {
+      const actual = cliente;
+      cliente = null;
+      sesionConectada = false;
+      generacion += 1;
+      try {
+        await Promise.race([
+          actual.destroy(),
+          new Promise((r) => setTimeout(r, 15_000)),
+        ]);
+      } catch {
+        // el cliente ya no existia o no pudo apagarse; seguimos igual
+      }
+      matarProcesosChromium();
+      limpiarCandadoPerfil();
+    }
+    sesionConectada = false;
+    qrPendiente = false;
+    errorInicializacion = null;
+    mensajeInicializado = false;
+    inicializando = false;
+    console.log(`[whatsapp] reiniciando sesion (${origen})...`);
+    await new Promise((r) => setTimeout(r, 3000));
+    inicializarWhatsApp();
+  } finally {
+    reiniciando = false;
+  }
 }
 
 function sesionEnDisco(): boolean {
@@ -457,8 +483,15 @@ console.log('[whatsapp] resultado parche LID:', String(resultado));
 }
 
 export function inicializarWhatsApp(): void {
-  if (!env.WHATSAPP_ENABLED || mensajeInicializado) return;
+  if (!env.WHATSAPP_ENABLED || mensajeInicializado || inicializando || cliente) {
+    if (!mensajeInicializado) {
+      console.log('[whatsapp] inicializacion ignorada: ya hay una en curso o un cliente activo');
+    }
+    return;
+  }
   mensajeInicializado = true;
+  inicializando = true;
+  const miGeneracion = ++generacion;
 
   limpiarCandadoPerfil();
   matarProcesosChromium();
@@ -509,10 +542,12 @@ authStrategy: new LocalAuth({
     });
 
     cliente.on('qr', (qr) => {
+      if (generacion !== miGeneracion) return;
       if (reintentoTimer) {
         clearTimeout(reintentoTimer);
         reintentoTimer = null;
       }
+      fallosConsecutivos = 0;
       qrPendiente = true;
       errorInicializacion = null;
       console.log('\n[whatsapp] Escanea este codigo QR con tu WhatsApp (solo la primera vez):\n');
@@ -524,6 +559,7 @@ authStrategy: new LocalAuth({
     });
 
 cliente.on('ready', () => {
+      if (generacion !== miGeneracion) return;
       if (reintentoTimer) {
         clearTimeout(reintentoTimer);
         reintentoTimer = null;
@@ -532,6 +568,7 @@ cliente.on('ready', () => {
       qrPendiente = false;
       errorInicializacion = null;
       fallosCandado = 0;
+      fallosConsecutivos = 0;
       console.log('[whatsapp] Sesion conectada correctamente');
       sincronizarSesionSiHay();
       void aplicarParcheLid().then(() => {
@@ -540,7 +577,9 @@ cliente.on('ready', () => {
     });
 
 cliente.on('auth_failure', (mensaje) => {
+      if (generacion !== miGeneracion) return;
       sesionConectada = false;
+      fallosConsecutivos += 1;
       errorInicializacion = 'Fallo de autenticacion: ' + mensaje;
       console.error('[whatsapp]', errorInicializacion);
       if (!apagando) {
@@ -550,8 +589,10 @@ cliente.on('auth_failure', (mensaje) => {
     });
 
     cliente.on('disconnected', (razon) => {
+      if (generacion !== miGeneracion) return;
       sesionConectada = false;
       qrPendiente = false;
+      fallosConsecutivos += 1;
       errorInicializacion = 'Sesion desconectada: ' + razon;
       console.error('[whatsapp]', errorInicializacion);
       if (!apagando) {
@@ -561,6 +602,7 @@ cliente.on('auth_failure', (mensaje) => {
     });
 
     void cliente.initialize().catch((e) => {
+      fallosConsecutivos += 1;
       errorInicializacion = 'No se pudo iniciar el navegador de WhatsApp: ' + String(e?.message || e);
       console.error('[whatsapp]', errorInicializacion);
       if (/process_singleton|in use by another Chromium/i.test(errorInicializacion)) {
@@ -576,9 +618,13 @@ cliente.on('auth_failure', (mensaje) => {
       }
       programarReintento();
     });
-  } catch (e) {
+} catch (e) {
     errorInicializacion = 'Error creando el cliente de WhatsApp: ' + String((e as Error).message);
     console.error('[whatsapp]', errorInicializacion);
+    mensajeInicializado = false;
+    inicializando = false;
+    fallosConsecutivos += 1;
+    programarReintento();
   }
 }
 
@@ -799,7 +845,7 @@ export function reiniciarWhatsApp(): void {
     clearTimeout(reintentoTimer);
     reintentoTimer = null;
   }
-  if (!mensajeInicializado && !cliente) {
+  if (!mensajeInicializado && !cliente && !inicializando) {
     console.log('[whatsapp] reinicio a peticion del usuario: sin cliente activo, inicializando');
     inicializarWhatsApp();
     return;
@@ -809,6 +855,7 @@ export function reiniciarWhatsApp(): void {
 
 export function detenerWhatsApp(): void {
   apagando = true;
+  generacion += 1;
   if (sesionConectada) sincronizarSesionSiHay();
   if (reintentos) clearInterval(reintentos);
   if (reintentoTimer) {
