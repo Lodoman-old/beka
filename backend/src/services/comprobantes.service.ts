@@ -66,12 +66,17 @@ function lineasDocumento(doc: PDFDoc, filas: { izquierda: string; derecha: strin
   doc.moveDown(0.5);
 }
 
-function encabezadoTabla(doc: PDFDoc, columnas: string[], anchos: number[]): void {
+function encabezadoTabla(doc: PDFDoc, columnas: string[], anchos: number[], derechas?: boolean[]): void {
   doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#1e293b');
   const y = doc.y;
   let x = 45;
   columnas.forEach((columna, i) => {
-    doc.text(columna, x, y, { width: anchos[i], align: i === columnas.length - 1 ? 'right' : 'left', lineBreak: false });
+    if (derechas?.[i]) {
+      const anchoTexto = doc.widthOfString(columna);
+      doc.text(columna, x + anchos[i] - anchoTexto, y, { lineBreak: false });
+    } else {
+      doc.text(columna, x, y, { lineBreak: false });
+    }
     x += anchos[i];
   });
   const yRegla = y + 15;
@@ -154,7 +159,7 @@ export async function pdfVenta(idVenta: number): Promise<{ buffer: Buffer; nombr
     { izquierda: `Fecha: ${fechaTexto(venta.fecha, true)}`, derecha: `Estado: ${venta.estado === 'LIQUIDADO' ? 'LIQUIDADO' : 'PENDIENTE'}` },
   ]);
 
-  encabezadoTabla(doc, ['SKU', 'Producto', 'Cant.', 'Precio', 'Subtotal'], [60, 215, 45, 80, 122]);
+  encabezadoTabla(doc, ['SKU', 'Producto', 'Cant.', 'Precio', 'Subtotal'], [60, 215, 45, 80, 122], [false, false, true, true, true]);
   for (const d of detalles) {
     const x = 45;
     const y = doc.y;
@@ -183,7 +188,7 @@ export async function pdfVenta(idVenta: number): Promise<{ buffer: Buffer; nombr
     doc.moveDown(0.5);
     doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#1e293b').text('Abonos registrados', { align: 'center' });
     doc.moveDown(0.3);
-    encabezadoTabla(doc, ['#', 'Fecha', 'Método', 'Monto'], [45, 150, 200, 127]);
+    encabezadoTabla(doc, ['#', 'Fecha', 'Método', 'Monto'], [45, 150, 200, 127], [false, false, false, true]);
     for (const a of abonos) {
       const y = doc.y;
       doc.font('Helvetica').fontSize(9.5).fillColor('#334155');
