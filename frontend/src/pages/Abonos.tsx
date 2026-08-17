@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Wallet, Search, CheckCircle2, RefreshCw, Building2, Bus, X, FileText } from 'lucide-react';
+import { Wallet, Search, CheckCircle2, RefreshCw, Building2, Bus, X, FileText, Send } from 'lucide-react';
 import { api, q, descargarComprobante } from '../api/client';
 import { Abono, ItemVentas, ItemViajes, ResultadoAbono, Venta, Viaje } from '../api/types';
 import { useApi, useAccion } from '../hooks/useApi';
@@ -104,6 +104,21 @@ export default function Abonos() {
               v.etiqueta.toLowerCase().includes(busqueda.toLowerCase())
             )
         );
+
+  const reenviar = (a: Abono) => {
+    void accion.ejecutar(async () => {
+      await api.post(`/abonos/${a.id}/reintentar-notificacion`);
+      await abonosHoy.recargar();
+    });
+  };
+
+  const estadoNotificacion = (estado: string) => {
+    if (estado === 'ENVIADA') return <p className="text-[10px] text-emerald-500">enviado</p>;
+    if (estado === 'FALLIDA') return <p className="text-[10px] text-red-400">no enviado</p>;
+    if (estado === 'PENDIENTE') return <p className="text-[10px] text-amber-500">en cola</p>;
+    if (estado === 'SIN_TELEFONO') return <p className="text-[10px] text-slate-400">sin teléfono</p>;
+    return null;
+  };
 
   const registrar = (e: FormEvent) => {
     e.preventDefault();
@@ -415,11 +430,17 @@ export default function Abonos() {
                 >
                   <FileText size={16} />
                 </button>
+                <button
+                  onClick={() => reenviar(a)}
+                  disabled={accion.ocupado}
+                  className="p-2 text-slate-400 hover:text-emerald-600 disabled:opacity-50"
+                  title="Reenviar comprobante por WhatsApp"
+                >
+                  <Send size={16} />
+                </button>
                 <div className="text-right">
                   <p className="font-bold text-emerald-600">+{moneda(a.monto)}</p>
-                  {a.notificacion_whatsapp === 'SIN_TELEFONO' && (
-                    <p className="text-[10px] text-slate-400">sin teléfono</p>
-                  )}
+                  {estadoNotificacion(a.notificacion_whatsapp)}
                 </div>
               </div>
             </div>

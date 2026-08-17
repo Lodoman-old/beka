@@ -32,6 +32,7 @@ function crearDocumento(titulo: string, negocio: string): PDFDoc {
   gradiente.stop(0, '#24336b').stop(1, '#101b42');
   doc.rect(0, 0, doc.page.width, 135).fill(gradiente);
 
+  const xTexto = existeLogo() ? 135 : 45;
   if (existeLogo()) {
     try {
       doc.image(RUTA_LOGO, 45, 38, { fit: [75, 75] });
@@ -39,14 +40,15 @@ function crearDocumento(titulo: string, negocio: string): PDFDoc {
       void 0;
     }
   }
-  doc.fontSize(15).font('Helvetica-Bold').fillColor('#ffffff').text(negocio, 135, 40, { width: 400 });
+  doc.fontSize(15).font('Helvetica-Bold').fillColor('#ffffff').text(negocio, xTexto, 40, { width: 400 });
   const yTitulo = Math.max(doc.y + 5, 68);
-  doc.fontSize(12).fillColor('#cdd8f0').text(titulo, 135, yTitulo, { width: 400 });
+  doc.fontSize(12).fillColor('#cdd8f0').text(titulo, xTexto, yTitulo, { width: 400 });
   const yEmitido = Math.max(doc.y + 3, yTitulo + 17);
-  doc.fillColor('#8fa3d8').fontSize(8.5).font('Helvetica').text(`Emitido: ${fechaTexto(new Date(), true)}`, 135, yEmitido, { width: 400 });
+  doc.fillColor('#8fa3d8').fontSize(8.5).font('Helvetica').text(`Emitido: ${fechaTexto(new Date(), true)}`, xTexto, yEmitido, { width: 400 });
   doc.fillColor('#000000');
-  doc.font('Helvetica-Bold').fontSize(11).text('_______________________________________________________________________________', 45, 141);
-  doc.y = 166;
+  const yRegla = Math.max(doc.y + 10, 145);
+  doc.moveTo(45, yRegla).lineTo(doc.page.width - 45, yRegla).lineWidth(0.8).strokeColor('#e2e8f0').stroke();
+  doc.y = yRegla + 20;
   return doc;
 }
 
@@ -72,9 +74,9 @@ function encabezadoTabla(doc: PDFDoc, columnas: string[], anchos: number[]): voi
     doc.text(columna, x, y, { width: anchos[i] - 10, align: i === columnas.length - 1 ? 'right' : 'left', lineBreak: false });
     x += anchos[i];
   });
-  doc.y = y + 13;
-  doc.text('______________________________', 45);
-  doc.moveDown(0.3);
+  const yRegla = y + 15;
+  doc.moveTo(45, yRegla).lineTo(doc.page.width - 45, yRegla).lineWidth(0.6).strokeColor('#e2e8f0').stroke();
+  doc.y = yRegla + 8;
 }
 
 function pieDocumento(doc: PDFDoc, negocio: string): void {
@@ -150,23 +152,23 @@ export async function pdfVenta(idVenta: number): Promise<{ buffer: Buffer; nombr
     { izquierda: `Cliente: ${venta.cliente_nombre}`, derecha: '' },
     ...(venta.cliente_telefono ? [{ izquierda: `Teléfono: ${venta.cliente_telefono}`, derecha: '' }] : []),
     { izquierda: `Fecha: ${fechaTexto(venta.fecha, true)}`, derecha: `Estado: ${venta.estado === 'LIQUIDADO' ? 'LIQUIDADO' : 'PENDIENTE'}` },
-    { izquierda: 'Producto/servicio', derecha: 'Cant. · Precio' },
   ]);
 
-  encabezadoTabla(doc, ['SKU', 'Producto', 'Cant.', 'Precio', 'Subtotal'], [70, 215, 45, 80, 120]);
+  encabezadoTabla(doc, ['SKU', 'Producto', 'Cant.', 'Precio', 'Subtotal'], [60, 215, 45, 80, 122]);
   for (const d of detalles) {
     const x = 45;
     const y = doc.y;
     doc.font('Helvetica').fontSize(9.5).fillColor('#334155');
-    doc.text(String(d.sku), x, y, { width: 70, lineBreak: false, ellipsis: true });
-    doc.text(d.producto_nombre, x + 70, y, { width: 215, lineBreak: false, ellipsis: true });
-    doc.text(String(d.cantidad), x + 285, y, { width: 45, align: 'right', lineBreak: false });
-    doc.text(moneda(d.precio_unitario), x + 330, y, { width: 80, align: 'right', lineBreak: false });
-    doc.text(moneda(d.precio_unitario * d.cantidad), x + 410, y, { width: 120, align: 'right', lineBreak: false });
+    doc.text(String(d.sku), x, y, { width: 60, lineBreak: false, ellipsis: true });
+    doc.text(d.producto_nombre, x + 60, y, { width: 215, lineBreak: false, ellipsis: true });
+    doc.text(String(d.cantidad), x + 275, y, { width: 45, align: 'right', lineBreak: false });
+    doc.text(moneda(d.precio_unitario), x + 320, y, { width: 80, align: 'right', lineBreak: false });
+    doc.text(moneda(d.precio_unitario * d.cantidad), x + 400, y, { width: 122, align: 'right', lineBreak: false });
     doc.moveDown(0.4);
   }
-  doc.text('_____________________________', 45);
-  doc.moveDown(0.5);
+  const yReglaTabla = doc.y + 2;
+  doc.moveTo(45, yReglaTabla).lineTo(doc.page.width - 45, yReglaTabla).lineWidth(0.6).strokeColor('#e2e8f0').stroke();
+  doc.y = yReglaTabla + 10;
 
   lineasDocumento(doc, [
     { izquierda: 'Subtotal', derecha: moneda(detalles.reduce((s, d) => s + d.precio_unitario * d.cantidad, 0)) },
@@ -178,14 +180,18 @@ export async function pdfVenta(idVenta: number): Promise<{ buffer: Buffer; nombr
   ]);
 
   if (abonos.length) {
-    doc.text('Abonos registrados', { align: 'center' });
-    encabezadoTabla(doc, ['#', 'Fecha', 'Método', 'Monto'], [45, 150, 200, 140]);
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#1e293b').text('Abonos registrados', { align: 'center' });
+    doc.moveDown(0.3);
+    encabezadoTabla(doc, ['#', 'Fecha', 'Método', 'Monto'], [45, 150, 200, 127]);
     for (const a of abonos) {
-      lineasDocumento(doc, [
-        { izquierda: `#${a.id}`, derecha: '' },
-        { izquierda: fechaTexto(a.created_at), derecha: a.metodo },
-        { izquierda: moneda(a.monto), derecha: '' },
-      ]);
+      const y = doc.y;
+      doc.font('Helvetica').fontSize(9.5).fillColor('#334155');
+      doc.text(`#${a.id}`, 45, y, { width: 45, lineBreak: false });
+      doc.text(fechaTexto(a.created_at), 90, y, { width: 150, lineBreak: false });
+      doc.text(a.metodo, 240, y, { width: 200, lineBreak: false });
+      doc.text(moneda(a.monto), 440, y, { width: 127, align: 'right', lineBreak: false });
+      doc.moveDown(0.4);
     }
   }
 
