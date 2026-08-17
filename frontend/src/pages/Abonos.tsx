@@ -38,6 +38,7 @@ export default function Abonos() {
   const [tipo, setTipo] = useState<'VENTA' | 'VIAJE'>(
     viajePreseleccionado ? 'VIAJE' : 'VENTA'
   );
+  const [rango, setRango] = useState<'hoy' | 'ayer' | '7dias' | 'todo'>('hoy');
   const [busqueda, setBusqueda] = useState('');
   const [entidad, setEntidad] = useState<Entidad | null>(null);
   const [monto, setMonto] = useState('');
@@ -84,12 +85,33 @@ export default function Abonos() {
     [filtroBusqueda, tipo]
   );
 
-  const abonosHoy = useApi<Abono[]>(
+  const consultaRango = (() => {
+    const hoyInicio = new Date();
+    hoyInicio.setHours(0, 0, 0, 0);
+    if (rango === 'hoy') return { desde: hoyInicio.toISOString(), hasta: undefined };
+    if (rango === 'ayer') {
+      const ayerInicio = new Date(hoyInicio);
+      ayerInicio.setDate(ayerInicio.getDate() - 1);
+      return { desde: ayerInicio.toISOString(), hasta: hoyInicio.toISOString() };
+    }
+    if (rango === '7dias') {
+      const inicio = new Date(hoyInicio);
+      inicio.setDate(inicio.getDate() - 7);
+      return { desde: inicio.toISOString(), hasta: undefined };
+    }
+    return { desde: undefined, hasta: undefined };
+  })();
+
+  const abonos = useApi<Abono[]>(
     () =>
       api.get(
-        `/abonos${q({ desde: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), limite: '30' })}`
+        `/abonos${q({
+          desde: consultaRango.desde,
+          hasta: consultaRango.hasta,
+          limite: rango === 'hoy' ? '30' : '200',
+        })}`
       ),
-    []
+    [rango]
   );
 
   const seleccionables: Entidad[] =
@@ -108,7 +130,7 @@ export default function Abonos() {
   const reenviar = (a: Abono) => {
     void accion.ejecutar(async () => {
       await api.post(`/abonos/${a.id}/reintentar-notificacion`);
-      await abonosHoy.recargar();
+      await abonos.recargar();
     });
   };
 
@@ -152,7 +174,7 @@ export default function Abonos() {
       setMonto('');
       setEntidad(null);
       setBusqueda('');
-      await abonosHoy.recargar();
+      await abonos.recargar();
     });
   };
 
@@ -393,22 +415,42 @@ export default function Abonos() {
       </Card>
 
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold text-slate-700 text-sm">Abonos de hoy</h2>
-        <button
-          onClick={() => void abonosHoy.recargar()}
-          className="p-2 text-slate-400 hover:text-marca-600"
-          aria-label="Actualizar"
-        >
-          <RefreshCw size={16} />
-        </button>
+        <h2 className="font-semibold text-slate-700 text-sm">
+          {rango === 'hoy'
+            ? 'Abonos de hoy'
+            : rango === 'ayer'
+              ? 'Abonos de ayer'
+              : rango === '7dias'
+                ? 'Abonos últimos 7 días'
+                : 'Todos los abonos'}
+        </h2>
+        <div className="flex items-center gap-2">
+          <select
+            className={inputClase + ' !py-1.5 !text-xs w-auto'}
+            value={rango}
+            onChange={(e) => setRango(e.target.value as typeof rango)}
+          >
+            <option value="hoy">Hoy</option>
+            <option value="ayer">Ayer</option>
+            <option value="7dias">Últimos 7 días</option>
+            <option value="todo">Todos</option>
+          </select>
+          <button
+            onClick={() => void abonos.recargar()}
+            className="p-2 text-slate-400 hover:text-marca-600"
+            aria-label="Actualizar"
+          >
+            <RefreshCw size={16} />
+          </button>
+        </div>
       </div>
-      {abonosHoy.cargando ? (
+      {abonos.cargando ? (
         <Cargando texto="Cargando abonos…" />
-      ) : !abonosHoy.datos?.length ? (
+      ) : !abonos.datos?.length ? (
         <Vacio mensaje="Aún no hay abonos hoy" />
       ) : (
         <Card className="divide-y divide-slate-50">
-          {abonosHoy.datos.map((a) => (
+          {abonos.datos.map((a) => (
             <div key={a.id} className="px-4 py-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-slate-700 truncate">
@@ -447,7 +489,7 @@ export default function Abonos() {
           ))}
         </Card>
       )}
-      {abonosHoy.error && <Alerta tipo="error" mensaje={msjError(abonosHoy.error)} />}
+      {abonos.error && <Alerta tipo="error" mensaje={msjError(abonos.error)} />}
     </div>
   );
 }

@@ -71,7 +71,7 @@ function encabezadoTabla(doc: PDFDoc, columnas: string[], anchos: number[]): voi
   const y = doc.y;
   let x = 45;
   columnas.forEach((columna, i) => {
-    doc.text(columna, x, y, { width: anchos[i] - 10, align: i === columnas.length - 1 ? 'right' : 'left', lineBreak: false });
+    doc.text(columna, x, y, { width: anchos[i], align: i === columnas.length - 1 ? 'right' : 'left', lineBreak: false });
     x += anchos[i];
   });
   const yRegla = y + 15;
