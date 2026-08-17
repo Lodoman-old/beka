@@ -34,8 +34,12 @@ let generacion = 0;
 let inicializando = false;
 let reiniciando = false;
 let fallosConsecutivos = 0;
+let ultimoReady = 0;
+let ultimaSincronizacion = 0;
 
 const REINTENTOS_BACKOFF = [60_000, 120_000, 300_000, 900_000];
+const MIN_INTERVALO_READY = 10_000;
+const MIN_INTERVALO_SYNC = 5 * 60_000;
 
 const TRABAJO = '/tmp/beka-auth';
 
@@ -91,13 +95,38 @@ function copiarSesion(origen: string, destino: string): void {
   }
 }
 
-function sincronizarSesionSiHay(): void {
+function sincronizarSesionSiHay(forzar = false): void {
+  const ahora = Date.now();
+  if (!forzar && ahora - ultimaSincronizacion < MIN_INTERVALO_SYNC) {
+    console.log(
+      `[whatsapp] sync de sesion omitido (hace ${Math.round((ahora - ultimaSincronizacion) / 1000)}s; maximo 1 cada 5 min)`
+    );
+    return;
+  }
+  ultimaSincronizacion = ahora;
   const sesionTmp = path.join(TRABAJO, 'session');
   if (!fs.existsSync(sesionTmp)) return;
   if (!fs.existsSync(path.join(sesionTmp, 'Default'))) return;
   const destino = path.join(env.WHATSAPP_SESION_DIR, 'session');
   copiarSesion(sesionTmp, destino);
   console.log('[whatsapp] sesion sincronizada al volumen');
+}
+
+function borrarSesionDeDisco(): void {
+  const dir = env.WHATSAPP_SESION_DIR;
+  try {
+    if (!fs.existsSync(dir)) return;
+    let borrado = 0;
+    for (const entrada of fs.readdirSync(dir)) {
+      if (entrada === 'session' || entrada.startsWith('session-respaldo-')) {
+        fs.rmSync(path.join(dir, entrada), { recursive: true, force: true });
+        borrado += 1;
+      }
+    }
+    console.log(`[whatsapp] sesion borrada del volumen (${borrado} carpeta(s)); se pedira un QR nuevo`);
+  } catch (e) {
+    console.error('[whatsapp] no pude borrar la sesion del volumen:', (e as Error).message);
+  }
 }
 
 function limpiarCandadoPerfil(): void {
@@ -260,7 +289,7 @@ async function destruirYReiniciar(origen: string): Promise<void> {
   }
   reiniciando = true;
   try {
-    if (sesionConectada) sincronizarSesionSiHay();
+if (sesionConectada) sincronizarSesionSiHay(true);
     if (cliente) {
       const actual = cliente;
       cliente = null;
@@ -560,6 +589,14 @@ authStrategy: new LocalAuth({
 
 cliente.on('ready', () => {
       if (generacion !== miGeneracion) return;
+      const ahora = Date.now();
+      if (ahora - ultimoReady < MIN_INTERVALO_READY) {
+        console.log(
+          `[whatsapp] ready repetido ignorado (${Math.round((ahora - ultimoReady) / 1000)}s tras el anterior)`
+        );
+        return;
+      }
+      ultimoReady = ahora;
       if (reintentoTimer) {
         clearTimeout(reintentoTimer);
         reintentoTimer = null;
@@ -596,6 +633,9 @@ cliente.on('auth_failure', (mensaje) => {
       errorInicializacion = 'Sesion desconectada: ' + razon;
       console.error('[whatsapp]', errorInicializacion);
       if (!apagando) {
+        if (String(razon) === 'LOGOUT') {
+          borrarSesionDeDisco();
+        }
         console.log('[whatsapp] reconexion automatica programada en 60s...');
         programarReintento();
       }
@@ -856,7 +896,7 @@ export function reiniciarWhatsApp(): void {
 export function detenerWhatsApp(): void {
   apagando = true;
   generacion += 1;
-  if (sesionConectada) sincronizarSesionSiHay();
+  if (sesionConectada) sincronizarSesionSiHay(true);
   if (reintentos) clearInterval(reintentos);
   if (reintentoTimer) {
     clearTimeout(reintentoTimer);
