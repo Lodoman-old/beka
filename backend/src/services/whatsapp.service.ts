@@ -1,8 +1,14 @@
-﻿import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
+﻿import makeWASocket, {
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  useMultiFileAuthState,
+  Browsers,
+  type WASocket,
+} from '@whiskeysockets/baileys';
+import pino from 'pino';
 import * as qrcode from 'qrcode-terminal';
 import QRCode from 'qrcode';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import { env } from '../config/env';
 import { EntidadAbono, FilaAbono, FilaVenta } from '../types';
@@ -10,22 +16,11 @@ import { abonosPendientesDeNotificar, marcarNotificacion } from './abonos.servic
 import { asegurarCredencialesPortal } from './clientes.service';
 import { nombreNegocio, DIR_DATOS, obtenerValor } from './sistema.service';
 import { pdfAbono, pdfVenta } from './comprobantes.service';
-import { pool } from '../db/pool';
 
-let cliente: Client | null = null;
+let cliente: WASocket | null = null;
 let sesionConectada = false;
 let qrPendiente = false;
 let mensajeInicializado = false;
-
-let ultimaLimpieza: {
-  dir: string;
-  borrados: number;
-  sesionExiste: boolean;
-  entradas: string[];
-  encontrados: string[];
-  error?: string;
-} | null = null;
-let fallosCandado = 0;
 let errorInicializacion: string | null = null;
 let reintentos: ReturnType<typeof setInterval> | null = null;
 let reintentoTimer: ReturnType<typeof setTimeout> | null = null;
@@ -35,81 +30,23 @@ let inicializando = false;
 let reiniciando = false;
 let fallosConsecutivos = 0;
 let ultimoReady = 0;
-let ultimaSincronizacion = 0;
+let ultimoQr = '';
+
+const mensajesMemoria = new Map<string, import('@whiskeysockets/baileys').WAMessage>();
 
 const REINTENTOS_BACKOFF = [60_000, 120_000, 300_000, 900_000];
 const MIN_INTERVALO_READY = 10_000;
-const MIN_INTERVALO_SYNC = 5 * 60_000;
 
-const TRABAJO = '/tmp/beka-auth';
-
-function copiarSesion(origen: string, destino: string): void {
-  const carpetaCache = new Set([
-    'Cache',
-    'Code Cache',
-    'GPUCache',
-    'Dictionaries',
-    'CacheStorage',
-    'Cache_Data',
-  ]);
-  try {
-    if (!fs.existsSync(origen)) return;
-    fs.mkdirSync(destino, { recursive: true });
-    for (const entrada of fs.readdirSync(origen)) {
-      if (entrada.startsWith('Singleton') || entrada.startsWith('Crashpad')) continue;
-      const rutaO = path.join(origen, entrada);
-      const rutaD = path.join(destino, entrada);
-      let esDir = false;
-      try {
-        esDir = fs.statSync(rutaO).isDirectory();
-      } catch {
-        continue;
-      }
-      if (esDir && entrada === 'Default') {
-        fs.mkdirSync(rutaD, { recursive: true });
-        for (const sub of fs.readdirSync(rutaO)) {
-          if (carpetaCache.has(sub)) continue;
-          const rs = path.join(rutaO, sub);
-          try {
-            fs.cpSync(rs, path.join(rutaD, sub), { recursive: true });
-          } catch {
-            // archivo ocupado; se salta
-          }
-        }
-      } else if (esDir) {
-        try {
-          fs.cpSync(rutaO, rutaD, { recursive: true });
-        } catch {
-          // archivo ocupado; se salta
-        }
-      } else {
-        try {
-          fs.copyFileSync(rutaO, rutaD);
-        } catch {
-          // archivo ocupado; se salta
-        }
-      }
-    }
-  } catch (e) {
-    console.error('[whatsapp] no pude copiar la sesion:', (e as Error).message);
-  }
+function dirSesion(): string {
+  return path.join(env.WHATSAPP_SESION_DIR, 'baileys');
 }
 
-function sincronizarSesionSiHay(forzar = false): void {
-  const ahora = Date.now();
-  if (!forzar && ahora - ultimaSincronizacion < MIN_INTERVALO_SYNC) {
-    console.log(
-      `[whatsapp] sync de sesion omitido (hace ${Math.round((ahora - ultimaSincronizacion) / 1000)}s; maximo 1 cada 5 min)`
-    );
-    return;
+function sesionEnDisco(): boolean {
+  try {
+    return fs.existsSync(path.join(dirSesion(), 'creds.json'));
+  } catch {
+    return false;
   }
-  ultimaSincronizacion = ahora;
-  const sesionTmp = path.join(TRABAJO, 'session');
-  if (!fs.existsSync(sesionTmp)) return;
-  if (!fs.existsSync(path.join(sesionTmp, 'Default'))) return;
-  const destino = path.join(env.WHATSAPP_SESION_DIR, 'session');
-  copiarSesion(sesionTmp, destino);
-  console.log('[whatsapp] sesion sincronizada al volumen');
 }
 
 function borrarSesionDeDisco(): void {
@@ -118,7 +55,7 @@ function borrarSesionDeDisco(): void {
     if (!fs.existsSync(dir)) return;
     let borrado = 0;
     for (const entrada of fs.readdirSync(dir)) {
-      if (entrada === 'session' || entrada.startsWith('session-respaldo-')) {
+      if (entrada === 'baileys' || entrada === 'session' || entrada.startsWith('session-respaldo-')) {
         fs.rmSync(path.join(dir, entrada), { recursive: true, force: true });
         borrado += 1;
       }
@@ -127,147 +64,6 @@ function borrarSesionDeDisco(): void {
   } catch (e) {
     console.error('[whatsapp] no pude borrar la sesion del volumen:', (e as Error).message);
   }
-}
-
-function limpiarCandadoPerfil(): void {
-  const dir = env.WHATSAPP_SESION_DIR;
-  const raices = [dir, path.dirname(dir), '/app/.wwebjs_auth', TRABAJO];
-  const reporte: {
-    borrados: number;
-    sesionExiste: boolean;
-    entradas: string[];
-    encontrados: string[];
-    error?: string;
-  } = {
-    borrados: 0,
-    sesionExiste: false,
-    entradas: [],
-    encontrados: [],
-  };
-  try {
-    if (fs.existsSync(dir)) {
-      reporte.sesionExiste = fs.existsSync(path.join(dir, 'session'));
-      reporte.entradas = fs
-        .readdirSync(dir)
-        .slice(0, 40)
-        .map((e) => e.slice(0, 40));
-    }
-    const pendientes: string[] = [];
-    for (const raiz of raices) {
-      if (fs.existsSync(raiz)) pendientes.push(raiz);
-    }
-    let borrados = 0;
-    while (pendientes.length > 0) {
-      const actual = pendientes.pop() as string;
-      for (const entrada of fs.readdirSync(actual)) {
-        const ruta = path.join(actual, entrada);
-        let esDir = false;
-        try {
-          esDir = fs.statSync(ruta).isDirectory();
-        } catch {
-          continue;
-        }
-        if (esDir) {
-          if (entrada === 'Singleton') {
-            fs.rmSync(ruta, { recursive: true, force: true });
-            borrados += 1;
-            reporte.encontrados.push(ruta);
-            console.log('[whatsapp] candado eliminado:', ruta);
-          } else {
-            pendientes.push(ruta);
-          }
-        } else if (entrada.startsWith('Singleton')) {
-          fs.rmSync(ruta, { force: true });
-          borrados += 1;
-          reporte.encontrados.push(ruta);
-          console.log('[whatsapp] candado eliminado:', ruta);
-        }
-      }
-    }
-    if (borrados > 0) console.log(`[whatsapp] ${borrados} archivos de candado eliminados`);
-    reporte.borrados = borrados;
-  } catch (e) {
-    reporte.error = (e as Error).message;
-    console.error('[whatsapp] no pude limpiar el candado del perfil:', reporte.error);
-  }
-  ultimaLimpieza = { dir, ...reporte };
-}
-
-function limpiarCachePerfil(): void {
-  const dir = path.join(TRABAJO, 'session', 'Default');
-  const carpetas = ['Cache', 'Code Cache', 'GPUCache', 'Dictionaries', 'CacheStorage', 'Service Worker/CacheStorage'];
-  try {
-    if (!fs.existsSync(dir)) return;
-    let borrado = 0;
-    for (const carpeta of carpetas) {
-      const ruta = path.join(dir, carpeta);
-      if (fs.existsSync(ruta)) {
-        fs.rmSync(ruta, { recursive: true, force: true });
-        borrado += 1;
-      }
-    }
-    if (borrado > 0) console.log(`[whatsapp] cache del perfil podado: ${borrado} carpetas`);
-  } catch (e) {
-    console.error('[whatsapp] no pude podar la cache del perfil:', (e as Error).message);
-  }
-}
-
-function matarProcesosChromium(): number {
-  const perfil = env.WHATSAPP_SESION_DIR;
-  let muertos = 0;
-  try {
-    if (!fs.existsSync('/proc')) return 0;
-    const pids = fs.readdirSync('/proc').filter((p) => /^\d+$/.test(p));
-    for (const pid of pids) {
-      try {
-        const cmdline = fs
-          .readFileSync(path.join('/proc', pid, 'cmdline'), 'utf8')
-          .replace(/\0/g, ' ');
-        if (!/chrome|chromium/i.test(cmdline)) continue;
-        if (!cmdline.includes(perfil) && !cmdline.includes(TRABAJO)) continue;
-        try {
-          process.kill(Number(pid), 'SIGKILL');
-          muertos += 1;
-          console.log('[whatsapp] proceso Chromium huerfano terminado: pid', pid);
-        } catch {
-          // ya estaba muerto o sin permisos
-        }
-      } catch {
-        // el pid ya no existe
-      }
-    }
-  } catch (e) {
-    console.error('[whatsapp] no pude revisar procesos Chromium:', (e as Error).message);
-  }
-  if (muertos > 0) console.log(`[whatsapp] ${muertos} procesos Chromium terminados`);
-  return muertos;
-}
-
-function hayCandadoActivo(): boolean {
-  const dir = env.WHATSAPP_SESION_DIR;
-  const raices = [dir, path.dirname(dir), '/app/.wwebjs_auth'].filter((r) => fs.existsSync(r));
-  const pendientes: string[] = [...raices];
-  let vueltas = 0;
-  while (pendientes.length > 0 && vueltas < 5000) {
-    const actual = pendientes.pop() as string;
-    vueltas += 1;
-    for (const entrada of fs.readdirSync(actual)) {
-      const ruta = path.join(actual, entrada);
-      let esDir = false;
-      try {
-        esDir = fs.statSync(ruta).isDirectory();
-      } catch {
-        continue;
-      }
-      if (esDir) {
-        if (entrada === 'Singleton') return true;
-        pendientes.push(ruta);
-      } else if (entrada.startsWith('Singleton')) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 function programarReintento(): void {
@@ -289,7 +85,6 @@ async function destruirYReiniciar(origen: string): Promise<void> {
   }
   reiniciando = true;
   try {
-if (sesionConectada) sincronizarSesionSiHay(true);
     if (cliente) {
       const actual = cliente;
       cliente = null;
@@ -297,14 +92,15 @@ if (sesionConectada) sincronizarSesionSiHay(true);
       generacion += 1;
       try {
         await Promise.race([
-          actual.destroy(),
-          new Promise((r) => setTimeout(r, 15_000)),
+          new Promise<void>((resolver) => {
+            actual.end(new Error('reinicio'));
+            resolver();
+          }),
+          new Promise((r) => setTimeout(r, 10_000)),
         ]);
       } catch {
         // el cliente ya no existia o no pudo apagarse; seguimos igual
       }
-      matarProcesosChromium();
-      limpiarCandadoPerfil();
     }
     sesionConectada = false;
     qrPendiente = false;
@@ -319,32 +115,6 @@ if (sesionConectada) sincronizarSesionSiHay(true);
   }
 }
 
-function sesionEnDisco(): boolean {
-  try {
-    return fs.existsSync(path.join(env.WHATSAPP_SESION_DIR, 'session'));
-  } catch {
-    return false;
-  }
-}
-
-function restaurarSesionRespaldo(): void {
-  const dir = env.WHATSAPP_SESION_DIR;
-  try {
-    if (!fs.existsSync(dir) || sesionEnDisco()) return;
-    const respaldos = fs
-      .readdirSync(dir)
-      .filter((e) => e.startsWith('session-respaldo-'))
-      .map((e) => ({ nombre: e, ruta: path.join(dir, e) }))
-      .sort((a, b) => fs.statSync(b.ruta).mtimeMs - fs.statSync(a.ruta).mtimeMs);
-    const masReciente = respaldos[0];
-    if (!masReciente) return;
-    fs.renameSync(masReciente.ruta, path.join(dir, 'session'));
-    console.log('[whatsapp] sesion restaurada desde respaldo: ' + masReciente.nombre);
-  } catch (e) {
-    console.error('[whatsapp] no pude restaurar la sesion de respaldo:', (e as Error).message);
-  }
-}
-
 export function estadoWhatsApp(): {
   activo: boolean;
   estado: string;
@@ -352,7 +122,7 @@ export function estadoWhatsApp(): {
   detalle: string | null;
   sesion_en_disco?: boolean;
   respaldo_en_disco?: boolean;
-  candado?: typeof ultimaLimpieza;
+  candado?: null;
 } {
   return {
     activo: env.WHATSAPP_ENABLED,
@@ -368,15 +138,8 @@ export function estadoWhatsApp(): {
     qr_pendiente: qrPendiente,
     detalle: errorInicializacion,
     sesion_en_disco: sesionEnDisco(),
-    respaldo_en_disco: (() => {
-      try {
-        if (!fs.existsSync(env.WHATSAPP_SESION_DIR)) return false;
-        return fs.readdirSync(env.WHATSAPP_SESION_DIR).some((e) => e.startsWith('session-respaldo-'));
-      } catch {
-        return false;
-      }
-    })(),
-    candado: ultimaLimpieza,
+    respaldo_en_disco: false,
+    candado: null,
   };
 }
 
@@ -384,130 +147,118 @@ export function sesionWhatsAppActiva(): boolean {
   return sesionConectada && cliente !== null;
 }
 
-async function aplicarParcheLid(): Promise<void> {
+function generarQr(qr: string): void {
+  if (qr === ultimoQr) return;
+  ultimoQr = qr;
+  if (reintentoTimer) {
+    clearTimeout(reintentoTimer);
+    reintentoTimer = null;
+  }
+  fallosConsecutivos = 0;
+  qrPendiente = true;
+  errorInicializacion = null;
+  console.log('[whatsapp] QR disponible; escanealo con el WhatsApp del negocio (solo la primera vez)');
+  qrcode.generate(qr, { small: true });
+  const rutaQr = path.join(DIR_DATOS, 'qr.png');
+  QRCode.toFile(rutaQr, qr, { width: 320, margin: 1, color: { dark: '#000000', light: '#FFFFFF' } })
+    .then(() => console.log(`[whatsapp] QR guardado en ${rutaQr} (sirvelo en /api/config/whatsapp-qr)`))
+    .catch((e) => console.error('[whatsapp] no pude guardar el QR:', (e as Error).message));
+}
+
+async function arrancarSock(miGeneracion: number): Promise<void> {
   try {
-    const pagina = (cliente as unknown as {
-      pupPage?: {
-        evaluate: (fn: string) => Promise<unknown>;
-        on: (evento: string, fn: (...args: unknown[]) => void) => void;
-      };
-    }).pupPage;
-    if (!pagina) return;
-pagina.on('console', (m) => {
-      const mensaje = (m as unknown as { text: () => string }).text();
-      if (mensaje && /parche-lid|WWebJS|lid|error/i.test(mensaje)) {
-        console.log(`[wa-page] ${mensaje}`);
+    let version: { version: [number, number, number] };
+    try {
+      const v = await fetchLatestBaileysVersion();
+      version = v;
+    } catch {
+      version = { version: [6, 7, 24] };
+    }
+    const { state, saveCreds } = await useMultiFileAuthState(dirSesion());
+    console.log(
+      `[whatsapp] sesion en disco: ${sesionEnDisco() ? 'SI (se reutilizara)' : 'NO (se pedira QR)'}`
+    );
+
+    const sock = makeWASocket({
+      version: version.version,
+      auth: state,
+      printQRInTerminal: false,
+      browser: Browsers.ubuntu('Chrome'),
+      logger: pino({ level: 'error' }),
+      markOnlineOnConnect: false,
+      syncFullHistory: false,
+      getMessage: async (clave) => {
+        const guardada = mensajesMemoria.get(`${clave.remoteJid}:${clave.id}`);
+        return guardada?.message || undefined;
+      },
+    });
+    cliente = sock;
+
+    sock.ev.on('creds.update', () => {
+      void saveCreds().catch(() => undefined);
+    });
+
+    sock.ev.on('connection.update', (u) => {
+      if (generacion !== miGeneracion) return;
+      if (u.qr) generarQr(u.qr);
+      if (u.connection === 'open') {
+        const ahora = Date.now();
+        if (ahora - ultimoReady < MIN_INTERVALO_READY) {
+          console.log(
+            `[whatsapp] open repetido ignorado (${Math.round((ahora - ultimoReady) / 1000)}s tras el anterior)`
+          );
+          return;
+        }
+        ultimoReady = ahora;
+        if (reintentoTimer) {
+          clearTimeout(reintentoTimer);
+          reintentoTimer = null;
+        }
+        sesionConectada = true;
+        qrPendiente = false;
+        errorInicializacion = null;
+        fallosConsecutivos = 0;
+        console.log('[whatsapp] Sesion conectada correctamente');
+        iniciarColaDeReintentos();
+      }
+      if (u.connection === 'close') {
+        if (apagando) return;
+        sesionConectada = false;
+        qrPendiente = false;
+        fallosConsecutivos += 1;
+        const codigo = (
+          u.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined
+        )?.output?.statusCode;
+        if (
+          codigo === DisconnectReason.loggedOut ||
+          codigo === DisconnectReason.badSession ||
+          codigo === DisconnectReason.multideviceMismatch
+        ) {
+          errorInicializacion = 'La sesion fue revocada o es invalida; se generara un QR nuevo';
+          console.error(`[whatsapp] ${errorInicializacion} (codigo ${codigo})`);
+          borrarSesionDeDisco();
+        } else {
+          errorInicializacion = 'Conexion perdida: ' + (codigo ?? 'desconocido');
+          console.error('[whatsapp]', errorInicializacion);
+        }
+        programarReintento();
       }
     });
-    (pagina as unknown as { on: (e: string, fn: (err: unknown) => void) => void }).on(
-      'pageerror',
-      (err) => {
-        const e = err as { message?: string; stack?: string };
-        console.error(`[wa-page] pageerror: ${e?.message} ${e?.stack || ''}`);
+
+    sock.ev.on('messages.upsert', (m) => {
+      for (const msg of m.messages) {
+        if (msg.key?.id && msg.key.remoteJid) {
+          mensajesMemoria.set(`${msg.key.remoteJid}:${msg.key.id}`, msg);
+        }
       }
-    );
-const resultado = await pagina.evaluate(`
-      (() => {
-        try {
-          const gating = window.require && window.require('WAWebLid1X1MigrationGating');
-          if (gating && gating.Lid1X1MigrationUtils) {
-            gating.Lid1X1MigrationUtils.isLidMigrated = () => false;
-          }
-const original = window.WWebJS && window.WWebJS.getChat;
-          if (original) {
-            window.__bekaLidCache = window.__bekaLidCache || {};
-            const sendOriginal = window.WWebJS.sendMessage;
-            if (sendOriginal) {
-              window.WWebJS.sendMessage = async function (chat, content, options) {
-                try {
-                  const r = await sendOriginal.call(this, chat, content, options);
-                  console.log('[parche-lid] sendMessage OK ' + (chat && chat.id && chat.id._serialized));
-                  return r;
-                } catch (e) {
-                  console.error('[parche-lid] sendMessage ERROR ' + (chat && chat.id && chat.id._serialized) + ' -> ' + e.name + ': ' + e.message + '\\n' + (e.stack || '').split('\\n').slice(0, 15).join('\\n'));
-                  throw e;
-                }
-              };
-            }
-            window.__bekaUsync = async function (numero) {
-              if (window.__bekaLidCache[numero]) return window.__bekaLidCache[numero];
-              const variantes = [String(numero)];
-              if (String(numero).length === 12 && String(numero).startsWith('52')) variantes.push('521' + String(numero).slice(2));
-              if (String(numero).length === 13 && String(numero).startsWith('521')) variantes.push('52' + String(numero).slice(3));
-              for (const variante of variantes) {
-                try {
-                  const query = window.require('WAWebContactSyncUtils').constructUsyncDeltaQuery([{ type: 'add', phoneNumber: variante }]);
-                  const r = await query.execute();
-                  const item = r && Array.isArray(r.list) && r.list.length ? r.list[0] : null;
-                  let idResuelto = null;
-                  if (item) {
-                    if (typeof item.id === 'string') idResuelto = item.id;
-                    else if (item.id && item.id._serialized) idResuelto = item.id._serialized;
-                    else if (item.lid) idResuelto = item.lid;
-                    else if (item.user) idResuelto = item.user + '@lid';
-                  }
-                  if (idResuelto && /@/.test(idResuelto)) {
-                    window.__bekaLidCache[numero] = idResuelto;
-                    return idResuelto;
-                  }
-                } catch (e) {
-                  console.error('[parche-lid] usync fallo variante ' + variante + ': ' + (e && e.message));
-                }
-              }
-              return null;
-            };
-window.WWebJS.getChat = async function (chatId, opts) {
-              const numero = String(chatId).split('@')[0];
-              try {
-                const lid = await window.__bekaUsync(numero);
-                if (lid) {
-                  const lidWid = window.require('WAWebWidFactory').createWid(lid);
-                  const creado = await window.require('WAWebFindChatAction').findOrCreateLatestChat(lidWid);
-                  if (creado && creado.chat) {
-                    const { getAsModel = true } = opts || {};
-                    console.log('[parche-lid] getChat CON LID OK ' + chatId);
-                    if (!getAsModel) return creado.chat;
-                    try {
-                      return await window.WWebJS.getChatModel(creado.chat, { isChannel: false });
-                    } catch (e) {
-                      console.error('[parche-lid] getChatModel fallo ' + chatId + ' -> ' + e.name + ': ' + e.message);
-                      return {
-                        id: creado.chat.id,
-                        formattedTitle: typeof creado.chat.formattedTitle === 'function' ? creado.chat.formattedTitle() : (creado.chat.formattedTitle || ''),
-                        isGroup: false,
-                        isReadOnly: false,
-                        unreadCount: 0,
-                        t: 0,
-                        archive: false,
-                        pin: false,
-                        isLocked: false,
-                        isMuted: false,
-                        muteExpiration: 0,
-                        lastMessage: null
-                      };
-                    }
-                  }
-                }
-              } catch (e) {
-                console.error('[parche-lid] usync fallo ' + chatId + ': ' + (e && e.message));
-              }
-              try {
-                const r = await original.call(this, chatId, opts);
-                console.log('[parche-lid] getChat ORIGINAL OK ' + chatId);
-                return r;
-              } catch (e) {
-                console.error('[parche-lid] getChat ORIGINAL ERROR ' + chatId + ' -> ' + e.name + ': ' + e.message + '\\n' + (e.stack || '').split('\\n').slice(0, 12).join('\\n'));
-                throw e;
-              }
-            };
-          }
-          return 'parche-lid aplicado';
-        } catch (e) { return 'error: ' + (e && e.message ? e.message : 'desconocido'); }
-      })();
-    `);
-console.log('[whatsapp] resultado parche LID:', String(resultado));
+    });
   } catch (e) {
-    console.error('[whatsapp] no pude aplicar el parche LID:', (e as Error).message);
+    errorInicializacion = 'Error creando el cliente de WhatsApp: ' + String((e as Error).message);
+    console.error('[whatsapp]', errorInicializacion);
+    mensajeInicializado = false;
+    inicializando = false;
+    fallosConsecutivos += 1;
+    programarReintento();
   }
 }
 
@@ -521,151 +272,8 @@ export function inicializarWhatsApp(): void {
   mensajeInicializado = true;
   inicializando = true;
   const miGeneracion = ++generacion;
-
-  limpiarCandadoPerfil();
-  matarProcesosChromium();
-  limpiarCandadoPerfil();
-  restaurarSesionRespaldo();
-  limpiarCachePerfil();
-
-  try {
-    fs.rmSync(TRABAJO, { recursive: true, force: true });
-    fs.mkdirSync(TRABAJO, { recursive: true });
-    copiarSesion(path.join(env.WHATSAPP_SESION_DIR, 'session'), path.join(TRABAJO, 'session'));
-    const hayEnTmp = fs.existsSync(path.join(TRABAJO, 'session', 'Default'));
-    console.log(`[whatsapp] perfil de trabajo en /tmp listo (sesion copiada: ${hayEnTmp ? 'SI' : 'NO'})`);
-  } catch (e) {
-    console.error('[whatsapp] no pude preparar el perfil temporal:', (e as Error).message);
-  }
-
-  console.log(
-    `[whatsapp] sesion en disco: ${sesionEnDisco() ? 'SI (se reutilizara)' : 'NO (se pedira QR)'}`
-  );
-
-  if (hayCandadoActivo()) {
-    fallosCandado += 1;
-    console.log(
-      `[whatsapp] el perfil esta bloqueado por OTRA instancia en ejecucion (#${fallosCandado}); ` +
-      'la sesion NO se toca: espero a que la libere (si es un contenedor viejo de un deploy, detenlo)'
-    );
-    programarReintento();
-    return;
-  }
-
-  try {
-    cliente = new Client({
-authStrategy: new LocalAuth({
-        dataPath: TRABAJO,
-      }),
-      webVersion: '2.3000.1045241378-alpha',
-      webVersionCache: {
-        type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/%s.html',
-      },
-      puppeteer: {
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-        executablePath: env.CHROME_EXECUTABLE,
-        protocolTimeout: 300000,
-      },
-    });
-
-    cliente.on('qr', (qr) => {
-      if (generacion !== miGeneracion) return;
-      if (reintentoTimer) {
-        clearTimeout(reintentoTimer);
-        reintentoTimer = null;
-      }
-      fallosConsecutivos = 0;
-      qrPendiente = true;
-      errorInicializacion = null;
-      console.log('\n[whatsapp] Escanea este codigo QR con tu WhatsApp (solo la primera vez):\n');
-      qrcode.generate(qr, { small: true });
-      const rutaQr = path.join(DIR_DATOS, 'qr.png');
-      QRCode.toFile(rutaQr, qr, { width: 320, margin: 1, color: { dark: '#000000', light: '#FFFFFF' } })
-        .then(() => console.log(`[whatsapp] QR guardado en ${rutaQr} (sirvelo en /api/config/whatsapp-qr)`))
-        .catch((e) => console.error('[whatsapp] no pude guardar el QR:', (e as Error).message));
-    });
-
-cliente.on('ready', () => {
-      if (generacion !== miGeneracion) return;
-      const ahora = Date.now();
-      if (ahora - ultimoReady < MIN_INTERVALO_READY) {
-        console.log(
-          `[whatsapp] ready repetido ignorado (${Math.round((ahora - ultimoReady) / 1000)}s tras el anterior)`
-        );
-        return;
-      }
-      ultimoReady = ahora;
-      if (reintentoTimer) {
-        clearTimeout(reintentoTimer);
-        reintentoTimer = null;
-      }
-      sesionConectada = true;
-      qrPendiente = false;
-      errorInicializacion = null;
-      fallosCandado = 0;
-      fallosConsecutivos = 0;
-      console.log('[whatsapp] Sesion conectada correctamente');
-      sincronizarSesionSiHay();
-      void aplicarParcheLid().then(() => {
-        iniciarColaDeReintentos();
-      });
-    });
-
-cliente.on('auth_failure', (mensaje) => {
-      if (generacion !== miGeneracion) return;
-      sesionConectada = false;
-      fallosConsecutivos += 1;
-      errorInicializacion = 'Fallo de autenticacion: ' + mensaje;
-      console.error('[whatsapp]', errorInicializacion);
-      if (!apagando) {
-        console.log('[whatsapp] reprogramando reconexion: la sesion se generara de nuevo en el QR');
-        programarReintento();
-      }
-    });
-
-    cliente.on('disconnected', (razon) => {
-      if (generacion !== miGeneracion) return;
-      sesionConectada = false;
-      qrPendiente = false;
-      fallosConsecutivos += 1;
-      errorInicializacion = 'Sesion desconectada: ' + razon;
-      console.error('[whatsapp]', errorInicializacion);
-      if (!apagando) {
-        if (String(razon) === 'LOGOUT') {
-          borrarSesionDeDisco();
-        }
-        console.log('[whatsapp] reconexion automatica programada en 60s...');
-        programarReintento();
-      }
-    });
-
-    void cliente.initialize().catch((e) => {
-      fallosConsecutivos += 1;
-      errorInicializacion = 'No se pudo iniciar el navegador de WhatsApp: ' + String(e?.message || e);
-      console.error('[whatsapp]', errorInicializacion);
-      if (/process_singleton|in use by another Chromium/i.test(errorInicializacion)) {
-        fallosCandado += 1;
-        console.log(
-          `[whatsapp] perfil bloqueado por otra instancia (#${fallosCandado}): ` +
-          'no se toca la sesion; se reintenta en 60s hasta que la otra instancia la libere'
-        );
-        matarProcesosChromium();
-        limpiarCandadoPerfil();
-      } else {
-        fallosCandado = 0;
-      }
-      programarReintento();
-    });
-} catch (e) {
-    errorInicializacion = 'Error creando el cliente de WhatsApp: ' + String((e as Error).message);
-    console.error('[whatsapp]', errorInicializacion);
-    mensajeInicializado = false;
-    inicializando = false;
-    fallosConsecutivos += 1;
-    programarReintento();
-  }
+  console.log('[whatsapp] inicializando sesion (Baileys)...');
+  void arrancarSock(miGeneracion);
 }
 
 export function normalizarTelefono(telefono: string | null | undefined): string | null {
@@ -706,7 +314,7 @@ export async function construirMensajeAbono(
     '',
   ];
 
-if (entidad.estado === 'LIQUIDADO') {
+  if (entidad.estado === 'LIQUIDADO') {
     lineas.push(`🎉 *Tu cuenta quedo LIQUIDADA!*`);
   } else {
     lineas.push(`💰 Saldo pendiente: *${saldo}*`);
@@ -719,25 +327,15 @@ if (entidad.estado === 'LIQUIDADO') {
   return lineas.join('\n');
 }
 
+function jidDe(telefono: string): string {
+  return `${telefono}@s.whatsapp.net`;
+}
+
 async function enviarMensajeA(telefono: string, texto: string): Promise<void> {
   if (!cliente || !sesionConectada) {
     throw new Error('WhatsApp no conectado');
   }
-const chat = await getChatConCache(telefono);
-  await chat.sendMessage(texto);
-}
-
-const chatCache = new Map<string, import('whatsapp-web.js').Chat>();
-
-async function getChatConCache(telefono: string): Promise<import('whatsapp-web.js').Chat> {
-  if (!cliente || !sesionConectada) {
-    throw new Error('WhatsApp no conectado');
-  }
-  const existente = chatCache.get(telefono);
-  if (existente) return existente;
-  const chat = await cliente.getChatById(`${telefono}@c.us`);
-  chatCache.set(telefono, chat);
-  return chat;
+  await cliente.sendMessage(jidDe(telefono), { text: texto });
 }
 
 async function enviarPDFA(
@@ -748,15 +346,12 @@ async function enviarPDFA(
   if (!cliente || !sesionConectada) {
     throw new Error('WhatsApp no conectado');
   }
-  const rutaTemporal = path.join(os.tmpdir(), nombreArchivo);
-  fs.writeFileSync(rutaTemporal, buffer);
-  try {
-const media = MessageMedia.fromFilePath(rutaTemporal);
-    const chat = await getChatConCache(telefono);
-    await chat.sendMessage(media, { caption: `Recibo ${nombreArchivo.replace('.pdf', '')}` });
-  } finally {
-    fs.unlink(rutaTemporal, () => undefined);
-  }
+  await cliente.sendMessage(jidDe(telefono), {
+    document: buffer,
+    fileName: nombreArchivo,
+    mimetype: 'application/pdf',
+    caption: `Recibo ${nombreArchivo.replace('.pdf', '')}`,
+  });
 }
 
 export async function notificarAbono(abono: FilaAbono, entidad: EntidadAbono): Promise<void> {
@@ -811,12 +406,12 @@ function iniciarColaDeReintentos(): void {
   if (reintentos) return;
   reintentos = setInterval(async () => {
     try {
-const pendientes = await abonosPendientesDeNotificar(20);
-        if (pendientes.length) console.log(`[whatsapp] cola: ${pendientes.length} abono(s) pendiente(s) por enviar`);
-        for (const abono of pendientes) {
-          const telefono = normalizarTelefono((abono as FilaAbono & { cliente_telefono?: string | null }).cliente_telefono);
-          void procesarPendiente(abono, telefono);
-        }
+      const pendientes = await abonosPendientesDeNotificar(20);
+      if (pendientes.length) console.log(`[whatsapp] cola: ${pendientes.length} abono(s) pendiente(s) por enviar`);
+      for (const abono of pendientes) {
+        const telefono = normalizarTelefono((abono as FilaAbono & { cliente_telefono?: string | null }).cliente_telefono);
+        void procesarPendiente(abono, telefono);
+      }
     } catch (e) {
       console.error('[whatsapp] error en la cola de reintentos:', (e as Error).message);
     }
@@ -828,7 +423,7 @@ async function procesarPendiente(abono: FilaAbono, telefono: string | null): Pro
     await marcarNotificacion(abono.id, 'SIN_TELEFONO');
     return;
   }
-try {
+  try {
     const texto = await construirMensajePendiente(abono);
     await enviarMensajeA(telefono, texto);
     const pdf = await pdfAbono(abono.id);
@@ -896,16 +491,18 @@ export function reiniciarWhatsApp(): void {
 export function detenerWhatsApp(): void {
   apagando = true;
   generacion += 1;
-  if (sesionConectada) sincronizarSesionSiHay(true);
   if (reintentos) clearInterval(reintentos);
   if (reintentoTimer) {
     clearTimeout(reintentoTimer);
     reintentoTimer = null;
   }
   if (cliente) {
-    void cliente.destroy().catch(() => undefined);
+    try {
+      cliente.end(new Error('apagado'));
+    } catch {
+      // ya no existia
+    }
     cliente = null;
     sesionConectada = false;
   }
 }
-
