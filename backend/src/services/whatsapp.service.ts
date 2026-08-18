@@ -66,9 +66,9 @@ function borrarSesionDeDisco(): void {
   }
 }
 
-function programarReintento(): void {
+function programarReintento(esperaPersonalizada?: number): void {
   if (reintentoTimer) clearTimeout(reintentoTimer);
-  const espera = REINTENTOS_BACKOFF[Math.min(fallosConsecutivos, REINTENTOS_BACKOFF.length - 1)];
+  const espera = esperaPersonalizada ?? REINTENTOS_BACKOFF[Math.min(fallosConsecutivos, REINTENTOS_BACKOFF.length - 1)];
   console.log(
     `[whatsapp] reconexion programada en ${Math.round(espera / 1000)}s (fallos consecutivos: ${fallosConsecutivos})`
   );
@@ -224,7 +224,6 @@ async function arrancarSock(miGeneracion: number): Promise<void> {
       if (u.connection === 'close') {
         if (apagando) return;
         sesionConectada = false;
-        qrPendiente = false;
         fallosConsecutivos += 1;
         const codigo = (
           u.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined
@@ -234,14 +233,22 @@ async function arrancarSock(miGeneracion: number): Promise<void> {
           codigo === DisconnectReason.badSession ||
           codigo === DisconnectReason.multideviceMismatch
         ) {
+          qrPendiente = false;
           errorInicializacion = 'La sesion fue revocada o es invalida; se generara un QR nuevo';
           console.error(`[whatsapp] ${errorInicializacion} (codigo ${codigo})`);
           borrarSesionDeDisco();
-        } else {
+          programarReintento();
+        } else if (sesionEnDisco()) {
+          qrPendiente = false;
           errorInicializacion = 'Conexion perdida: ' + (codigo ?? 'desconocido');
           console.error('[whatsapp]', errorInicializacion);
+          programarReintento();
+        } else {
+          console.log(
+            `[whatsapp] caida temporal (${codigo ?? 'desconocido'}) mientras se espera el escaneo; el QR se regenera`
+          );
+          programarReintento(15_000);
         }
-        programarReintento();
       }
     });
 
